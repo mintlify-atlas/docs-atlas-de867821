@@ -1,0 +1,457 @@
+---
+title: Python SDK
+description: Server-side analytics and feature flags for Python applications
+---
+
+The PostHog Python SDK enables server-side event tracking, feature flag evaluation, and user identification for Python applications including Django, Flask, FastAPI, and more.
+
+## Installation
+
+Install the PostHog Python library using pip:
+
+```bash
+pip install posthog
+```
+
+## Initialization
+
+<Steps>
+  <Step title="Import the library">
+    ```python
+    from posthog import Posthog
+    ```
+  </Step>
+  
+  <Step title="Create a client instance">
+    Initialize PostHog with your project API key and host from your [project settings](https://app.posthog.com/settings/project):
+    
+    ```python
+    posthog = Posthog(
+        project_api_key='<ph_project_token>',
+        host='<ph_client_api_host>'
+    )
+    ```
+  </Step>
+  
+  <Step title="Verify the connection">
+    Send a test event to verify your setup:
+    
+    ```python
+    posthog.capture(
+        distinct_id='test_user',
+        event='test_event'
+    )
+    ```
+    
+    Check your [Activity feed](https://app.posthog.com/activity/explore) to confirm the event was received.
+  </Step>
+</Steps>
+
+<Note>
+**Django Integration**: If you're using Django, check out the [Django integration guide](https://posthog.com/docs/libraries/django) for automatic middleware setup and request tracking.
+</Note>
+
+## Capturing Events
+
+### Basic Event Capture
+
+Capture events with a distinct user ID and optional properties:
+
+```python
+posthog.capture(
+    distinct_id='user_123',
+    event='button_clicked',
+    properties={
+        'button_name': 'signup',
+        'page': 'homepage'
+    }
+)
+```
+
+### Capture with Timestamp
+
+Include a custom timestamp for historical events:
+
+```python
+from datetime import datetime
+
+posthog.capture(
+    distinct_id='user_123',
+    event='purchase_completed',
+    properties={'amount': 49.99},
+    timestamp=datetime(2024, 1, 15, 10, 30)
+)
+```
+
+### Batch Events
+
+Events are automatically batched for performance. Flush manually when needed:
+
+```python
+posthog.capture('user_123', 'event_1')
+posthog.capture('user_123', 'event_2')
+posthog.capture('user_123', 'event_3')
+
+# Flush all pending events
+posthog.flush()
+```
+
+## Identifying Users
+
+### Set User Identity
+
+Identify users with their unique ID and properties:
+
+```python
+posthog.identify(
+    distinct_id='user_123',
+    properties={
+        'email': 'user@example.com',
+        'name': 'Jane Doe',
+        'plan': 'premium',
+        'signup_date': '2024-01-01'
+    }
+)
+```
+
+### Update User Properties
+
+Set or update properties for existing users:
+
+```python
+posthog.set(
+    distinct_id='user_123',
+    properties={
+        'plan': 'enterprise',
+        'last_login': datetime.now().isoformat()
+    }
+)
+```
+
+### Set Once
+
+Set properties only if they don't already exist:
+
+```python
+posthog.set_once(
+    distinct_id='user_123',
+    properties={
+        'first_visit': datetime.now().isoformat()
+    }
+)
+```
+
+## Feature Flags
+
+### Check if Flag is Enabled
+
+```python
+if posthog.feature_enabled('new-dashboard', 'user_123'):
+    # Show new dashboard
+    render_new_dashboard()
+else:
+    # Show old dashboard
+    render_old_dashboard()
+```
+
+### Get Flag Value
+
+For multivariate flags, get the variant value:
+
+```python
+variant = posthog.get_feature_flag('experiment-button-color', 'user_123')
+
+if variant == 'blue':
+    button_color = '#0000FF'
+elif variant == 'green':
+    button_color = '#00FF00'
+else:
+    button_color = '#FF0000'  # default
+```
+
+### Get Flag Payload
+
+Retrieve JSON payloads attached to feature flags:
+
+```python
+payload = posthog.get_feature_flag_payload(
+    'experiment-config',
+    'user_123'
+)
+
+print(payload)  # {'theme': 'dark', 'maxItems': 10}
+```
+
+### Include User Properties
+
+Provide user properties for better flag targeting:
+
+```python
+is_enabled = posthog.feature_enabled(
+    'premium-feature',
+    'user_123',
+    person_properties={
+        'plan': 'enterprise',
+        'country': 'US'
+    }
+)
+```
+
+### Get All Flags
+
+Retrieve all feature flags for a user:
+
+```python
+flags = posthog.get_all_flags('user_123')
+print(flags)  # {'flag-1': True, 'flag-2': 'variant-a', 'flag-3': False}
+```
+
+## Group Analytics
+
+Associate users with groups (companies, organizations, etc.):
+
+```python
+# Identify a group
+posthog.group_identify(
+    group_type='company',
+    group_key='company_id_123',
+    properties={
+        'name': 'Acme Corporation',
+        'plan': 'enterprise',
+        'employees': 500
+    }
+)
+
+# Capture event for a user in a group
+posthog.capture(
+    distinct_id='user_123',
+    event='feature_used',
+    properties={'feature': 'advanced_analytics'},
+    groups={'company': 'company_id_123'}
+)
+```
+
+## Alias
+
+Merge user identities when a user transitions from anonymous to identified:
+
+```python
+# User was anonymous with ID 'anon_123'
+# After signup, merge with permanent ID
+posthog.alias(
+    previous_id='anon_123',
+    distinct_id='user_123'
+)
+```
+
+## Error Tracking
+
+### Capture Exceptions
+
+```python
+try:
+    risky_operation()
+except Exception as e:
+    posthog.capture_exception(
+        e,
+        distinct_id='user_123',
+        properties={'context': 'payment_processing'}
+    )
+```
+
+### With Context Manager
+
+```python
+with posthog.exception_autocapture(distinct_id='user_123'):
+    # Any exception here is automatically captured
+    process_payment()
+```
+
+## Django Integration
+
+For Django applications, use the Django-specific setup:
+
+<CodeGroup>
+```python settings.py
+# settings.py
+POSTHOG_API_KEY = '<ph_project_token>'
+POSTHOG_HOST = '<ph_client_api_host>'
+
+MIDDLEWARE = [
+    'posthog.middleware.PostHogMiddleware',
+    # ... other middleware
+]
+```
+
+```python views.py
+from posthog import posthog
+
+def my_view(request):
+    # User is automatically tracked from middleware
+    posthog.capture(
+        request.user.id,
+        'page_viewed',
+        properties={'page': 'dashboard'}
+    )
+    return render(request, 'template.html')
+```
+</CodeGroup>
+
+## Flask Integration
+
+```python
+from flask import Flask, request, session
+from posthog import Posthog
+
+app = Flask(__name__)
+posthog = Posthog(
+    project_api_key='<ph_project_token>',
+    host='<ph_client_api_host>'
+)
+
+@app.route('/signup', methods=['POST'])
+def signup():
+    user_id = create_user(request.form)
+    
+    posthog.identify(
+        distinct_id=user_id,
+        properties={
+            'email': request.form['email'],
+            'name': request.form['name']
+        }
+    )
+    
+    posthog.capture(
+        distinct_id=user_id,
+        event='user_signed_up',
+        properties={'source': 'web'}
+    )
+    
+    return {'success': True}
+```
+
+## FastAPI Integration
+
+```python
+from fastapi import FastAPI, Depends
+from posthog import Posthog
+
+app = FastAPI()
+posthog = Posthog(
+    project_api_key='<ph_project_token>',
+    host='<ph_client_api_host>'
+)
+
+@app.post('/api/purchase')
+async def create_purchase(user_id: str, amount: float):
+    # Process purchase
+    purchase_id = process_payment(user_id, amount)
+    
+    # Track event
+    posthog.capture(
+        distinct_id=user_id,
+        event='purchase_completed',
+        properties={
+            'amount': amount,
+            'purchase_id': purchase_id
+        }
+    )
+    
+    return {'purchase_id': purchase_id}
+```
+
+## Configuration Options
+
+```python
+posthog = Posthog(
+    project_api_key='<ph_project_token>',
+    host='<ph_client_api_host>',
+    
+    # Batch settings
+    max_batch_size=100,        # Max events per batch
+    flush_at=20,               # Flush after this many events
+    flush_interval=10,         # Flush after this many seconds
+    
+    # Performance
+    max_queue_size=10000,      # Max queued events
+    send=True,                 # Set to False for testing
+    
+    # Debugging
+    debug=True,                # Enable debug logging
+    on_error=lambda e, batch: print(f'Error: {e}')
+)
+```
+
+## Shutdown
+
+Always flush and close the client when your application shuts down:
+
+```python
+import atexit
+
+# Ensure events are sent before exit
+atexit.register(posthog.shutdown)
+
+# Or call manually
+posthog.shutdown()
+```
+
+## Testing
+
+Disable sending events in tests:
+
+```python
+import os
+from posthog import Posthog
+
+posthog = Posthog(
+    project_api_key='test_key',
+    host='https://app.posthog.com',
+    send=os.getenv('ENVIRONMENT') == 'production'
+)
+```
+
+Or use a mock:
+
+```python
+from unittest.mock import Mock
+
+posthog = Mock()
+posthog.capture('user_123', 'test_event')
+posthog.capture.assert_called_once_with('user_123', 'test_event')
+```
+
+## Best Practices
+
+<Note>
+**Use Environment Variables**: Store your API key in environment variables, not in code.
+</Note>
+
+<Note>
+**Flush on Shutdown**: Always call `posthog.shutdown()` or `posthog.flush()` before your application exits to ensure all events are sent.
+</Note>
+
+<Note>
+**Batch for Performance**: The SDK automatically batches events. For high-volume applications, tune `max_batch_size` and `flush_interval`.
+</Note>
+
+<Note>
+**User Context**: Include relevant user properties with `identify()` to enable better analytics and targeting.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Feature Flags" href="https://posthog.com/docs/feature-flags">
+    Learn advanced feature flag techniques
+  </Card>
+  <Card title="Django Integration" href="https://posthog.com/docs/libraries/django">
+    Full Django integration guide
+  </Card>
+  <Card title="API Reference" href="https://posthog.com/docs/libraries/python">
+    Complete Python SDK documentation
+  </Card>
+  <Card title="Group Analytics" href="https://posthog.com/docs/product-analytics/group-analytics">
+    Track B2B metrics by company or organization
+  </Card>
+</CardGroup>

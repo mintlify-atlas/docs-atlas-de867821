@@ -1,0 +1,458 @@
+---
+title: Data Pipelines
+description: Transform and route data in real-time with code-based transformations and destinations
+---
+
+Data Pipelines let you transform events as they arrive and route them to external destinations. Write custom transformation logic in Hog, filter events, and send data to webhooks, databases, and third-party tools.
+
+## Overview
+
+Data Pipelines provide:
+
+- **Real-time transformations** - Modify events as they're ingested
+- **Event filtering** - Route specific events to destinations
+- **Hog functions** - Write custom logic in PostHog's scripting language
+- **Destinations** - Send data to webhooks, Slack, databases, and more
+- **Error handling** - Automatic retries and degradation states
+
+## Transformations
+
+Transformations modify events before they're stored. Use them to:
+
+- Enrich events with external data
+- Normalize property formats
+- Filter out PII
+- Add computed properties
+
+### Creating a Transformation
+
+<Steps>
+
+<Step title="Write Hog code">
+Transformations use Hog, PostHog's event processing language:
+
+```hog
+// Normalize email addresses
+if (event.properties.email) {
+  event.properties.email := lower(trim(event.properties.email))
+}
+
+// Add computed property
+if (event.properties.revenue) {
+  event.properties.revenue_usd := event.properties.revenue * 1.2
+}
+
+// Filter out test users
+if (event.properties.email like '%@test.com') {
+  return null  // Drop the event
+}
+
+return event
+```
+</Step>
+
+<Step title="Set filters">
+Only process specific events:
+
+```json
+{
+  "events": [
+    {"id": "$pageview", "type": "events", "name": "$pageview"},
+    {"id": "purchase", "type": "events", "name": "purchase"}
+  ],
+  "properties": [
+    {
+      "key": "$current_url",
+      "type": "event",
+      "value": "/checkout",
+      "operator": "icontains"
+    }
+  ]
+}
+```
+</Step>
+
+<Step title="Deploy">
+Transformations apply immediately to new events. Existing events aren't modified.
+</Step>
+
+</Steps>
+
+### Transformation Examples
+
+<CodeGroup>
+
+```hog PII Filtering
+// Remove sensitive data
+if (event.properties.credit_card) {
+  event.properties.credit_card := 'REDACTED'
+}
+
+if (event.properties.ssn) {
+  delete event.properties.ssn
+}
+
+return event
+```
+
+```hog Property Enrichment
+// Add UTM parsing
+if (event.properties.$current_url) {
+  let url := parseUrl(event.properties.$current_url)
+  if (url.search) {
+    let params := parseSearchParams(url.search)
+    if (params.utm_source) {
+      event.properties.utm_source := params.utm_source
+      event.properties.utm_medium := params.utm_medium
+      event.properties.utm_campaign := params.utm_campaign
+    }
+  }
+}
+
+return event
+```
+
+```hog Data Normalization
+// Standardize country codes
+let countryMap := {
+  'USA': 'US',
+  'United States': 'US',
+  'U.S.A.': 'US',
+  'UK': 'GB',
+  'United Kingdom': 'GB'
+}
+
+if (event.properties.country) {
+  let normalized := countryMap[event.properties.country]
+  if (normalized) {
+    event.properties.country_code := normalized
+  }
+}
+
+return event
+```
+
+```hog External API Enrichment
+// Fetch additional data from API
+if (event.properties.user_id) {
+  let response := fetch(
+    f'https://api.example.com/users/{event.properties.user_id}',
+    {
+      headers: {
+        'Authorization': f'Bearer {inputs.api_key}'
+      }
+    }
+  )
+  
+  if (response.status == 200) {
+    let userData := response.body
+    event.properties.user_tier := userData.tier
+    event.properties.user_segment := userData.segment
+  }
+}
+
+return event
+```
+
+</CodeGroup>
+
+## Destinations
+
+Destinations send event data to external systems. PostHog supports:
+
+- **Webhooks** - POST events to any HTTP endpoint
+- **Message queues** - Kafka, RabbitMQ, AWS SQS
+- **Data warehouses** - Snowflake, BigQuery, Redshift
+- **Tools** - Slack, Discord, customer.io, Amplitude
+
+### Webhook Destination
+
+Send events to a webhook:
+
+```hog
+let payload := {
+  event: event.event,
+  distinct_id: event.distinct_id,
+  properties: event.properties,
+  timestamp: event.timestamp
+}
+
+fetch(inputs.webhook_url, {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': f'Bearer {inputs.api_token}'
+  },
+  body: payload
+})
+```
+
+<Note>
+  Destinations run asynchronously. They don't block event ingestion, and failures
+  are automatically retried with exponential backoff.
+</Note>
+
+### Slack Notifications
+
+Send alerts to Slack:
+
+```hog
+if (event.properties.revenue > 1000) {
+  let message := f'🎉 Large purchase: ${event.properties.revenue} from {event.distinct_id}'
+  
+  fetch(inputs.slack_webhook, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: {
+      text: message,
+      channel: '#sales',
+      username: 'PostHog Bot'
+    }
+  })
+}
+```
+
+### Database Export
+
+Write to PostgreSQL:
+
+```hog
+// Export high-value events to database
+if (event.event == 'purchase' and event.properties.revenue > 500) {
+  let query := f'''
+    INSERT INTO high_value_purchases 
+    (event_id, user_id, revenue, timestamp)
+    VALUES ('{event.uuid}', '{event.distinct_id}', {event.properties.revenue}, '{event.timestamp}')
+  '''
+  
+  // Execute via webhook to database proxy
+  fetch(inputs.db_proxy_url, {
+    method: 'POST',
+    body: {query: query}
+  })
+}
+```
+
+## Hog Language Reference
+
+### Available Context
+
+Hog functions have access to:
+
+```hog
+// Event data
+event.event          // Event name
+event.distinct_id    // User identifier  
+event.uuid          // Event UUID
+event.timestamp     // Event timestamp
+event.properties    // Event properties object
+event.person        // Person properties (if available)
+
+// Inputs (defined in function config)
+inputs.api_key
+inputs.webhook_url
+inputs.any_custom_input
+```
+
+### Built-in Functions
+
+<CodeGroup>
+
+```hog String Functions
+lower('Hello')           // 'hello'
+upper('hello')          // 'HELLO'
+trim('  text  ')        // 'text'
+split('a,b,c', ',')     // ['a', 'b', 'c']
+replace('hello', 'l', 'r')  // 'herro'
+```
+
+```hog JSON Functions
+parseJson('{"key": "value"}')  // {key: 'value'}
+toJson({key: 'value'})          // '{"key":"value"}'
+```
+
+```hog URL Functions
+parseUrl('https://example.com/path?q=1')
+// {protocol: 'https', host: 'example.com', path: '/path', search: 'q=1'}
+
+parseSearchParams('utm_source=google&utm_medium=cpc')
+// {utm_source: 'google', utm_medium: 'cpc'}
+```
+
+```hog HTTP Functions
+fetch(url, {
+  method: 'POST',
+  headers: {'Content-Type': 'application/json'},
+  body: {data: 'value'}
+})
+// Returns: {status: 200, body: {...}}
+```
+
+</CodeGroup>
+
+### Control Flow
+
+```hog
+// Conditionals
+if (condition) {
+  // ...
+} else if (other_condition) {
+  // ...
+} else {
+  // ...
+}
+
+// Loops
+for (let item in array) {
+  // ...
+}
+
+let i := 0
+while (i < 10) {
+  i := i + 1
+}
+```
+
+## Function Inputs
+
+Define configurable inputs for your functions:
+
+```json
+[
+  {
+    "key": "api_key",
+    "label": "API Key",
+    "type": "string",
+    "required": true,
+    "secret": true
+  },
+  {
+    "key": "webhook_url",
+    "label": "Webhook URL",
+    "type": "string",
+    "required": true
+  },
+  {
+    "key": "threshold",
+    "label": "Revenue Threshold",
+    "type": "number",
+    "default": 100
+  }
+]
+```
+
+Access inputs in your Hog code:
+
+```hog
+if (event.properties.revenue > inputs.threshold) {
+  fetch(inputs.webhook_url, {
+    headers: {'Authorization': f'Bearer {inputs.api_key}'},
+    // ...
+  })
+}
+```
+
+## Error Handling
+
+### Automatic Retries
+
+Failed destinations are automatically retried with exponential backoff:
+
+- First retry: 1 minute
+- Second retry: 5 minutes
+- Third retry: 15 minutes
+- Subsequent retries: 30 minutes
+
+### Degraded State
+
+Functions enter degraded state after repeated failures:
+
+```python
+GET /api/projects/{project_id}/warehouse/data_health_issues/
+
+{
+  "results": [
+    {
+      "id": "hog-fn-123",
+      "name": "Slack Notifier",
+      "type": "destination",
+      "status": "degraded",
+      "error": "HTTP 429: Rate limit exceeded"
+    }
+  ]
+}
+```
+
+### Error Logging
+
+Log errors for debugging:
+
+```hog
+try {
+  let response := fetch(inputs.webhook_url, {body: event})
+  if (response.status >= 400) {
+    print(f'Webhook failed: {response.status} - {response.body}')
+  }
+} catch (error) {
+  print(f'Error: {error}')
+}
+```
+
+## Monitoring
+
+### Function Metrics
+
+Track function performance:
+
+- **Execution count** - Total invocations
+- **Success rate** - Percentage of successful runs
+- **Average latency** - Time spent processing
+- **Error rate** - Failed invocations
+
+### Health Status
+
+Functions have health states:
+
+- **Active** - Running normally
+- **Degraded** - Experiencing errors but still running
+- **Disabled** - Automatically disabled after sustained failures
+- **Forcefully disabled** - Manually disabled by admin
+
+## Best Practices
+
+<Card title="Keep Transformations Fast" icon="bolt">
+  Transformations run synchronously during ingestion. Avoid slow operations like
+  external API calls. If needed, use destinations for async processing.
+</Card>
+
+<Card title="Use Filters Wisely" icon="filter">
+  Apply specific event filters to avoid running functions unnecessarily. This
+  reduces costs and improves performance.
+</Card>
+
+<Card title="Handle Failures Gracefully" icon="shield-check">
+  Use try/catch blocks and validate data before processing. Failed transformations
+  can drop events, while failed destinations only lose the external delivery.
+</Card>
+
+<Card title="Test Before Deploying" icon="flask">
+  Test Hog functions with sample events before enabling. Use print() statements
+  for debugging during development.
+</Card>
+
+## Limitations
+
+<Note>
+  **Transformation limits**:
+  - Max execution time: 30 seconds
+  - Max memory: 128 MB
+  - No file system access
+  - Limited external API calls (use destinations for heavy I/O)
+</Note>
+
+<Note>
+  **Destination limits**:
+  - Max retries: 10 attempts over 24 hours
+  - Functions disabled after 100 consecutive failures
+  - Rate limits depend on external service
+</Note>

@@ -1,0 +1,351 @@
+---
+title: Feature flags
+description: Roll out features gradually, target specific users, and toggle functionality without deployments using feature flags
+---
+
+Feature flags let you control who sees what features in your product. Ship code to production safely, test with internal users, and gradually roll out to everyone without redeploying.
+
+## How it works
+
+Feature flags wrap new code behind a conditional check:
+
+```javascript
+// Check if feature is enabled for this user
+if (posthog.isFeatureEnabled('new-dashboard')) {
+  // Show new dashboard
+  showNewDashboard()
+} else {
+  // Show old dashboard
+  showOldDashboard()
+}
+```
+
+PostHog evaluates the flag based on your rollout rules and returns true or false instantly.
+
+## Creating a flag
+
+Create flags from the feature flags page:
+
+<Steps>
+  <Step title="Click New feature flag">
+    Navigate to **Feature flags** and click **New feature flag**.
+  </Step>
+  
+  <Step title="Configure the flag">
+    - **Key:** Unique identifier (e.g., `new-checkout-flow`)
+    - **Name:** Human-readable name
+    - **Description:** What this flag controls
+  </Step>
+  
+  <Step title="Set rollout rules">
+    Choose your rollout strategy:
+    
+    - Roll out to everyone (100%)
+    - Roll out to a percentage (e.g., 10% of users)
+    - Target specific users by properties
+    - Use multiple conditions with AND/OR logic
+  </Step>
+  
+  <Step title="Save and activate">
+    Save the flag and toggle it active. Your code can now check this flag.
+  </Step>
+</Steps>
+
+## Rollout strategies
+
+<Tabs>
+  <Tab title="Percentage rollout">
+    Release to a percentage of users:
+    
+    - Set rollout to 10% initially
+    - Monitor metrics for issues
+    - Increase to 25%, then 50%, then 100%
+    - Roll back to 0% instantly if problems arise
+    
+    <Note>
+    PostHog uses consistent hashing. The same users always see the feature at each percentage level.
+    </Note>
+  </Tab>
+  
+  <Tab title="Property targeting">
+    Target users by properties:
+    
+    ```javascript
+    // First, set user properties
+    posthog.identify('user_123', {
+      email: 'user@example.com',
+      plan: 'enterprise',
+      beta_user: true
+    })
+    ```
+    
+    Then create targeting rules:
+    
+    - Show to users where `plan = enterprise`
+    - Show to users where `email contains @yourcompany.com`
+    - Show to users where `beta_user = true`
+  </Tab>
+  
+  <Tab title="Multiple groups">
+    Combine multiple conditions:
+    
+    **Group 1:** Internal testing
+    - Email contains `@yourcompany.com`
+    - Rollout: 100%
+    
+    **Group 2:** Beta users
+    - Property `beta_user = true`
+    - Rollout: 100%
+    
+    **Group 3:** General rollout
+    - No conditions
+    - Rollout: 10%
+    
+    Groups are evaluated in order. First match wins.
+  </Tab>
+</Tabs>
+
+## Using flags in code
+
+Check flags across platforms:
+
+<Tabs>
+  <Tab title="JavaScript">
+    ```javascript
+    // Simple boolean check
+    if (posthog.isFeatureEnabled('new-dashboard')) {
+      renderNewDashboard()
+    }
+    
+    // With callback (waits for flag to load)
+    posthog.onFeatureFlags(() => {
+      if (posthog.isFeatureEnabled('new-dashboard')) {
+        renderNewDashboard()
+      }
+    })
+    
+    // Get all flags at once
+    const flags = posthog.getFeatureFlags()
+    console.log(flags) // ['new-dashboard', 'dark-mode', ...]
+    ```
+  </Tab>
+  
+  <Tab title="React">
+    ```javascript
+    import { useFeatureFlagEnabled } from 'posthog-js/react'
+    
+    function Dashboard() {
+      const newDashboard = useFeatureFlagEnabled('new-dashboard')
+      
+      if (newDashboard) {
+        return <NewDashboard />
+      }
+      
+      return <OldDashboard />
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Python">
+    ```python
+    from posthog import Posthog
+    
+    posthog = Posthog(
+      '<ph_project_api_key>',
+      host='<ph_instance_address>'
+    )
+    
+    # Check flag for a user
+    is_enabled = posthog.feature_enabled(
+      'new-dashboard',
+      'user_distinct_id'
+    )
+    
+    if is_enabled:
+        render_new_dashboard()
+    ```
+  </Tab>
+  
+  <Tab title="Node.js">
+    ```javascript
+    const { PostHog } = require('posthog-node')
+    
+    const client = new PostHog(
+      '<ph_project_api_key>',
+      { host: '<ph_instance_address>' }
+    )
+    
+    // Async flag check
+    const isEnabled = await client.isFeatureEnabled(
+      'new-dashboard',
+      'user_distinct_id'
+    )
+    
+    if (isEnabled) {
+      return renderNewDashboard()
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Multivariate flags
+
+Return different values instead of just true/false:
+
+```javascript
+// Create a multivariate flag with variants:
+// - control (50%)
+// - variant-a (25%)
+// - variant-b (25%)
+
+const variant = posthog.getFeatureFlag('checkout-test')
+
+switch (variant) {
+  case 'variant-a':
+    showCheckoutFlowA()
+    break
+  case 'variant-b':
+    showCheckoutFlowB()
+    break
+  default:
+    showDefaultCheckout()
+}
+```
+
+Use multivariate flags for A/B tests with more than 2 variants.
+
+## Bootstrapping flags
+
+Avoid flicker by loading flags on the server:
+
+```javascript
+// Server-side: fetch flags for the user
+const flags = await posthog.getAllFlags('user_distinct_id')
+
+// Send to client
+res.render('index', { featureFlags: flags })
+
+// Client-side: bootstrap PostHog with flags
+posthog.init('<ph_project_api_key>', {
+  bootstrap: {
+    featureFlags: <%= JSON.stringify(featureFlags) %>
+  }
+})
+
+// Flags are available immediately, no loading state
+if (posthog.isFeatureEnabled('new-dashboard')) {
+  renderNewDashboard()
+}
+```
+
+## Local evaluation
+
+Evaluate flags on your server for faster performance:
+
+```python
+from posthog import Posthog
+
+posthog = Posthog(
+  '<ph_project_api_key>',
+  host='<ph_instance_address>',
+  personal_api_key='<ph_personal_api_key>'  # Required for local evaluation
+)
+
+# Flags are evaluated locally, no API call
+is_enabled = posthog.feature_enabled(
+  'new-dashboard',
+  'user_distinct_id',
+  person_properties={'plan': 'enterprise'}
+)
+```
+
+Local evaluation caches flag definitions and evaluates them in your process. Latency drops from approximately 50ms to less than 1ms.
+
+## Early access features
+
+Let users opt in to beta features:
+
+<Steps>
+  <Step title="Create an early access feature">
+    1. Go to **Feature flags** → **Early access**
+    2. Click **New early access feature**
+    3. Link to an existing feature flag
+    4. Add a name and description
+  </Step>
+  
+  <Step title="Show opt-in UI">
+    ```javascript
+    // Get available early access features
+    const features = posthog.getEarlyAccessFeatures()
+    
+    // Show UI for users to opt in
+    features.forEach(feature => {
+      console.log(feature.name, feature.description)
+    })
+    
+    // User opts in
+    posthog.updateEarlyAccessFeatureEnrollment(
+      'feature-key',
+      true  // enrolled
+    )
+    ```
+  </Step>
+  
+  <Step title="Flag activates automatically">
+    Once enrolled, the linked feature flag returns true for that user.
+  </Step>
+</Steps>
+
+## Common workflows
+
+<CardGroup cols={2}>
+  <Card title="Safe deployment" icon="shield">
+    Wrap new code in a flag set to 0%. Deploy to production with feature disabled. Test internally by enabling for your team, then gradually roll out.
+  </Card>
+  
+  <Card title="Kill switch" icon="power-off">
+    If a feature causes issues, set rollout to 0% instantly. No code deployment needed. Fix the issue and re-enable when ready.
+  </Card>
+  
+  <Card title="Beta program" icon="flask">
+    Create a flag targeting users with `beta_user = true`. Let users opt into beta features via your settings page.
+  </Card>
+  
+  <Card title="Sunsetting features" icon="trash">
+    Before removing code, set flag to 0% for a week. If no complaints, the feature wasn't being used. Safe to delete.
+  </Card>
+</CardGroup>
+
+## Flag analytics
+
+Track flag performance:
+
+- **Usage dashboard:** See which flags are active and their rollout percentage
+- **Event tracking:** PostHog automatically tracks `$feature_flag_called` events
+- **Correlation analysis:** See if flag variants correlate with conversion or retention
+
+<Note>
+Create insights filtering by `$feature_flag` property to compare metrics across flag states.
+</Note>
+
+## Best practices
+
+<Accordion title="Use flags for all new features">
+  Make feature flags your default deployment strategy. The ability to roll back instantly is worth the small code overhead.
+</Accordion>
+
+<Accordion title="Clean up old flags">
+  After a feature is fully rolled out and stable, remove the flag from code. Keep your codebase clean of unused conditionals.
+</Accordion>
+
+<Accordion title="Name flags clearly">
+  Use descriptive names like `new-checkout-flow` not `flag-123`. Your future self will thank you.
+</Accordion>
+
+<Accordion title="Test flag conditions">
+  Before rolling out, test flag logic by setting your user properties to match your targeting rules. Verify the flag returns the expected value.
+</Accordion>
+
+<Accordion title="Document flag purpose">
+  Use the description field to explain what the flag controls and when it can be removed. Helps with cleanup later.
+</Accordion>

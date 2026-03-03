@@ -1,0 +1,405 @@
+---
+title: List Feature Flags
+description: Retrieve all feature flags for a project with filtering and pagination
+---
+
+## GET /api/projects/:id/feature_flags
+
+Returns a paginated list of all feature flags in a project. Supports filtering by various criteria including active status, creation, tags, and evaluation runtime.
+
+### Path Parameters
+
+<ParamField path="id" type="integer" required>
+  Project ID
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="active" type="string">
+  Filter by active status: `true`, `false`, or `STALE`
+</ParamField>
+
+<ParamField query="created_by_id" type="string">
+  Filter by user ID who created the flag
+</ParamField>
+
+<ParamField query="search" type="string">
+  Search by feature flag key or name (case insensitive)
+</ParamField>
+
+<ParamField query="type" type="string">
+  Filter by flag type: `boolean`, `multivariant`, or `experiment`
+</ParamField>
+
+<ParamField query="evaluation_runtime" type="string">
+  Filter by evaluation runtime: `server`, `client`, or `both`
+</ParamField>
+
+<ParamField query="tags" type="string">
+  JSON-encoded array of tag names to filter by
+</ParamField>
+
+<ParamField query="has_evaluation_tags" type="string">
+  Filter by presence of evaluation context tags: `true` or `false`
+</ParamField>
+
+<ParamField query="excluded_properties" type="string">
+  JSON-encoded array of flag keys to exclude from results
+</ParamField>
+
+<ParamField query="order" type="string">
+  Field to order by (prefix with `-` for descending). Default: `-created_at`
+</ParamField>
+
+<ParamField query="limit" type="integer" default="100">
+  Number of results per page
+</ParamField>
+
+<ParamField query="offset" type="integer" default="0">
+  Pagination offset
+</ParamField>
+
+### Response
+
+<ResponseField name="count" type="integer">
+  Total number of feature flags matching the filters
+</ResponseField>
+
+<ResponseField name="next" type="string | null">
+  URL for the next page of results
+</ResponseField>
+
+<ResponseField name="previous" type="string | null">
+  URL for the previous page of results
+</ResponseField>
+
+<ResponseField name="results" type="array">
+  Array of feature flag objects
+  
+  <ResponseField name="id" type="integer">
+    Feature flag ID
+  </ResponseField>
+  
+  <ResponseField name="key" type="string">
+    Unique flag identifier
+  </ResponseField>
+  
+  <ResponseField name="name" type="string">
+    Flag description
+  </ResponseField>
+  
+  <ResponseField name="filters" type="object">
+    Release conditions and configuration
+  </ResponseField>
+  
+  <ResponseField name="active" type="boolean">
+    Whether the flag is currently active
+  </ResponseField>
+  
+  <ResponseField name="deleted" type="boolean">
+    Whether the flag is soft-deleted
+  </ResponseField>
+  
+  <ResponseField name="created_at" type="string">
+    ISO 8601 timestamp
+  </ResponseField>
+  
+  <ResponseField name="created_by" type="object">
+    User who created the flag
+  </ResponseField>
+  
+  <ResponseField name="tags" type="array">
+    Associated tag names
+  </ResponseField>
+  
+  <ResponseField name="evaluation_tags" type="array">
+    Evaluation context tag names
+  </ResponseField>
+  
+  <ResponseField name="version" type="integer">
+    Version number for optimistic locking
+  </ResponseField>
+  
+  <ResponseField name="can_edit" type="boolean">
+    Whether the current user can edit this flag
+  </ResponseField>
+  
+  <ResponseField name="experiment_set" type="array">
+    Associated experiments
+  </ResponseField>
+  
+  <ResponseField name="surveys" type="array">
+    Associated surveys
+  </ResponseField>
+  
+  <ResponseField name="features" type="array">
+    Associated early access features
+  </ResponseField>
+</ResponseField>
+
+## Examples
+
+### List All Flags
+
+<CodeGroup>
+```bash cURL
+curl -X GET "https://app.posthog.com/api/projects/:project_id/feature_flags" \
+  -H "Authorization: Bearer <ph_project_api_key>"
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    "https://app.posthog.com/api/projects/:project_id/feature_flags",
+    headers={"Authorization": "Bearer <ph_project_api_key>"}
+)
+
+flags = response.json()["results"]
+```
+
+```javascript JavaScript
+fetch('https://app.posthog.com/api/projects/:project_id/feature_flags', {
+  headers: {
+    'Authorization': 'Bearer <ph_project_api_key>'
+  }
+})
+  .then(res => res.json())
+  .then(data => {
+    console.log(data.results);
+  });
+```
+</CodeGroup>
+
+### Filter Active Flags
+
+<CodeGroup>
+```bash cURL
+curl -X GET "https://app.posthog.com/api/projects/:project_id/feature_flags?active=true" \
+  -H "Authorization: Bearer <ph_project_api_key>"
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    "https://app.posthog.com/api/projects/:project_id/feature_flags",
+    params={"active": "true"},
+    headers={"Authorization": "Bearer <ph_project_api_key>"}
+)
+```
+</CodeGroup>
+
+### Search by Key or Name
+
+<CodeGroup>
+```bash cURL
+curl -X GET "https://app.posthog.com/api/projects/:project_id/feature_flags?search=dashboard" \
+  -H "Authorization: Bearer <ph_project_api_key>"
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    "https://app.posthog.com/api/projects/:project_id/feature_flags",
+    params={"search": "dashboard"},
+    headers={"Authorization": "Bearer <ph_project_api_key>"}
+)
+```
+</CodeGroup>
+
+### Filter by Type and Tags
+
+<CodeGroup>
+```bash cURL
+curl -X GET "https://app.posthog.com/api/projects/:project_id/feature_flags?type=multivariant&tags=%5B%22frontend%22%2C%22experiment%22%5D" \
+  -H "Authorization: Bearer <ph_project_api_key>"
+```
+
+```python Python
+import requests
+import json
+
+response = requests.get(
+    "https://app.posthog.com/api/projects/:project_id/feature_flags",
+    params={
+        "type": "multivariant",
+        "tags": json.dumps(["frontend", "experiment"])
+    },
+    headers={"Authorization": "Bearer <ph_project_api_key>"}
+)
+```
+</CodeGroup>
+
+### Filter by Evaluation Runtime
+
+<CodeGroup>
+```bash cURL
+curl -X GET "https://app.posthog.com/api/projects/:project_id/feature_flags?evaluation_runtime=server" \
+  -H "Authorization: Bearer <ph_project_api_key>"
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    "https://app.posthog.com/api/projects/:project_id/feature_flags",
+    params={"evaluation_runtime": "server"},
+    headers={"Authorization": "Bearer <ph_project_api_key>"}
+)
+```
+</CodeGroup>
+
+### Pagination
+
+<CodeGroup>
+```bash cURL
+curl -X GET "https://app.posthog.com/api/projects/:project_id/feature_flags?limit=50&offset=100" \
+  -H "Authorization: Bearer <ph_project_api_key>"
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    "https://app.posthog.com/api/projects/:project_id/feature_flags",
+    params={"limit": 50, "offset": 100},
+    headers={"Authorization": "Bearer <ph_project_api_key>"}
+)
+```
+</CodeGroup>
+
+## Response Example
+
+```json
+{
+  "count": 42,
+  "next": "https://app.posthog.com/api/projects/123/feature_flags?limit=10&offset=10",
+  "previous": null,
+  "results": [
+    {
+      "id": 12345,
+      "key": "new-dashboard",
+      "name": "New Dashboard Design",
+      "filters": {
+        "groups": [
+          {
+            "rollout_percentage": 20,
+            "properties": []
+          }
+        ]
+      },
+      "deleted": false,
+      "active": true,
+      "created_by": {
+        "id": 1,
+        "uuid": "01234567-89ab-cdef-0123-456789abcdef",
+        "distinct_id": "user@example.com",
+        "first_name": "Jane",
+        "email": "user@example.com"
+      },
+      "created_at": "2024-01-15T10:30:00Z",
+      "updated_at": "2024-01-20T14:22:00Z",
+      "last_modified_by": {
+        "id": 1,
+        "uuid": "01234567-89ab-cdef-0123-456789abcdef",
+        "distinct_id": "user@example.com",
+        "first_name": "Jane",
+        "email": "user@example.com"
+      },
+      "ensure_experience_continuity": false,
+      "rollback_conditions": null,
+      "performed_rollback": false,
+      "tags": ["frontend", "dashboard"],
+      "evaluation_tags": [],
+      "version": 3,
+      "can_edit": true,
+      "usage_dashboard": 456,
+      "analytics_dashboards": [789],
+      "has_enriched_analytics": false,
+      "experiment_set": [],
+      "surveys": [],
+      "features": [],
+      "is_used_in_replay_settings": false
+    },
+    {
+      "id": 12346,
+      "key": "checkout-variant",
+      "name": "Checkout Flow Experiment",
+      "filters": {
+        "groups": [
+          {
+            "rollout_percentage": 100,
+            "properties": []
+          }
+        ],
+        "multivariate": {
+          "variants": [
+            {
+              "key": "control",
+              "name": "Control",
+              "rollout_percentage": 50
+            },
+            {
+              "key": "test",
+              "name": "Test",
+              "rollout_percentage": 50
+            }
+          ]
+        }
+      },
+      "active": true,
+      "deleted": false,
+      "created_at": "2024-01-10T09:00:00Z",
+      "tags": ["experiment", "checkout"],
+      "version": 1,
+      "can_edit": true
+    }
+  ]
+}
+```
+
+<Note>
+  **Notes:**
+  
+  - Internal flags created by surveys and product tours are automatically excluded from results
+  - Flags are ordered by creation date (newest first) by default
+  - Use the `order` parameter to sort by other fields (e.g., `order=key` or `order=-updated_at`)
+  - The `STALE` status filter returns flags that haven't been evaluated recently
+  - When filtering by tags, flags must have ALL specified tags (AND logic)
+  - The `has_evaluation_tags` filter helps identify flags with runtime context requirements
+</Note>
+
+## Filter Combinations
+
+You can combine multiple filters:
+
+<CodeGroup>
+```bash cURL
+curl -X GET "https://app.posthog.com/api/projects/:project_id/feature_flags?active=true&type=multivariant&evaluation_runtime=server&search=checkout" \
+  -H "Authorization: Bearer <ph_project_api_key>"
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    "https://app.posthog.com/api/projects/:project_id/feature_flags",
+    params={
+        "active": "true",
+        "type": "multivariant",
+        "evaluation_runtime": "server",
+        "search": "checkout"
+    },
+    headers={"Authorization": "Bearer <ph_project_api_key>"}
+)
+```
+</CodeGroup>
+
+## Related Endpoints
+
+- [Create Feature Flag](/api/feature-flags/create) - Create a new feature flag
+- [Get Feature Flag](/api/feature-flags/get) - Get a specific flag by ID
+- [Update Feature Flag](/api/feature-flags/update) - Update an existing flag
+- [Evaluate Feature Flags](/api/feature-flags/evaluate) - Evaluate flags via /decide

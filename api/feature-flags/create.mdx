@@ -1,0 +1,347 @@
+---
+title: Create Feature Flag
+description: Create a new feature flag with rollout percentages, filters, and variants
+---
+
+## POST /api/projects/:id/feature_flags
+
+Creates a new feature flag in your PostHog project. Feature flags allow you to roll out features to specific users or groups based on properties, cohorts, and rollout percentages.
+
+### Path Parameters
+
+<ParamField path="id" type="integer" required>
+  Project ID
+</ParamField>
+
+### Request Body
+
+<ParamField body="key" type="string" required>
+  Unique identifier for the flag. Only letters, numbers, hyphens (-) and underscores (_) allowed. Max 400 characters.
+</ParamField>
+
+<ParamField body="name" type="string">
+  Human-readable description of the flag (despite field name, this is the description)
+</ParamField>
+
+<ParamField body="active" type="boolean" default="true">
+  Whether the flag is active
+</ParamField>
+
+<ParamField body="filters" type="object" required>
+  Release conditions for the feature flag
+  
+  <ParamField body="groups" type="array" required>
+    Array of condition groups. At least one group required.
+    
+    <ParamField body="rollout_percentage" type="number">
+      Percentage of users to roll out to (0-100)
+    </ParamField>
+    
+    <ParamField body="properties" type="array">
+      Property filters for this group
+      
+      <ParamField body="key" type="string" required>
+        Property name
+      </ParamField>
+      
+      <ParamField body="type" type="string" required>
+        Property type: `person`, `group`, `cohort`, or `flag`
+      </ParamField>
+      
+      <ParamField body="value" type="any" required>
+        Value to match against
+      </ParamField>
+      
+      <ParamField body="operator" type="string">
+        Comparison operator: `exact`, `is_not`, `icontains`, `regex`, `gt`, `gte`, `lt`, `lte`, `is_set`, `is_not_set`, `is_date_before`, `is_date_after`, etc.
+      </ParamField>
+    </ParamField>
+    
+    <ParamField body="variant" type="string">
+      Override to serve a specific variant to this group (multivariate flags only)
+    </ParamField>
+  </ParamField>
+  
+  <ParamField body="multivariate" type="object">
+    Multivariate flag configuration
+    
+    <ParamField body="variants" type="array" required>
+      Array of variants. Rollout percentages must sum to 100.
+      
+      <ParamField body="key" type="string" required>
+        Variant identifier
+      </ParamField>
+      
+      <ParamField body="name" type="string">
+        Variant display name
+      </ParamField>
+      
+      <ParamField body="rollout_percentage" type="number" required>
+        Percentage allocation for this variant (0-100)
+      </ParamField>
+    </ParamField>
+  </ParamField>
+  
+  <ParamField body="payloads" type="object">
+    JSON payloads to return with flag evaluation. Keys must match variant keys for multivariate flags, or be "true" for boolean flags.
+  </ParamField>
+  
+  <ParamField body="aggregation_group_type_index" type="number">
+    Group type index for group-based flags (0-4)
+  </ParamField>
+</ParamField>
+
+<ParamField body="ensure_experience_continuity" type="boolean" default="false">
+  Ensure consistent experience for anonymous users across sessions
+</ParamField>
+
+<ParamField body="tags" type="array">
+  Array of tag names to associate with this flag
+</ParamField>
+
+<ParamField body="evaluation_tags" type="array">
+  Array of tag names for runtime evaluation context constraints (must be subset of tags)
+</ParamField>
+
+<ParamField body="rollback_conditions" type="array">
+  Conditions that trigger automatic rollback
+</ParamField>
+
+<ParamField body="has_encrypted_payloads" type="boolean" default="false">
+  Whether payloads are encrypted
+</ParamField>
+
+### Response
+
+<ResponseField name="id" type="integer">
+  Feature flag ID
+</ResponseField>
+
+<ResponseField name="key" type="string">
+  Feature flag key
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Feature flag description
+</ResponseField>
+
+<ResponseField name="filters" type="object">
+  Release conditions
+</ResponseField>
+
+<ResponseField name="active" type="boolean">
+  Whether the flag is active
+</ResponseField>
+
+<ResponseField name="deleted" type="boolean">
+  Whether the flag is soft-deleted
+</ResponseField>
+
+<ResponseField name="created_at" type="string">
+  ISO 8601 timestamp
+</ResponseField>
+
+<ResponseField name="created_by" type="object">
+  User who created the flag
+</ResponseField>
+
+<ResponseField name="tags" type="array">
+  Associated tags
+</ResponseField>
+
+<ResponseField name="version" type="integer">
+  Version number for optimistic locking
+</ResponseField>
+
+## Examples
+
+### Boolean Flag with Rollout Percentage
+
+<CodeGroup>
+```bash cURL
+curl -X POST https://app.posthog.com/api/projects/:project_id/feature_flags \
+  -H "Authorization: Bearer <ph_project_api_key>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "key": "new-dashboard",
+    "name": "New Dashboard Design",
+    "active": true,
+    "filters": {
+      "groups": [
+        {
+          "rollout_percentage": 20
+        }
+      ]
+    }
+  }'
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    "https://app.posthog.com/api/projects/:project_id/feature_flags",
+    headers={
+        "Authorization": "Bearer <ph_project_api_key>",
+        "Content-Type": "application/json"
+    },
+    json={
+        "key": "new-dashboard",
+        "name": "New Dashboard Design",
+        "active": True,
+        "filters": {
+            "groups": [
+                {
+                    "rollout_percentage": 20
+                }
+            ]
+        }
+    }
+)
+```
+</CodeGroup>
+
+### Flag with Property Filters
+
+<CodeGroup>
+```bash cURL
+curl -X POST https://app.posthog.com/api/projects/:project_id/feature_flags \
+  -H "Authorization: Bearer <ph_project_api_key>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "key": "beta-feature",
+    "name": "Beta Feature Access",
+    "filters": {
+      "groups": [
+        {
+          "properties": [
+            {
+              "key": "email",
+              "type": "person",
+              "value": "@company.com",
+              "operator": "icontains"
+            }
+          ],
+          "rollout_percentage": 100
+        }
+      ]
+    }
+  }'
+```
+</CodeGroup>
+
+### Multivariate Flag with Variants
+
+<CodeGroup>
+```bash cURL
+curl -X POST https://app.posthog.com/api/projects/:project_id/feature_flags \
+  -H "Authorization: Bearer <ph_project_api_key>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "key": "checkout-flow",
+    "name": "Checkout Flow Variants",
+    "filters": {
+      "groups": [
+        {
+          "rollout_percentage": 100
+        }
+      ],
+      "multivariate": {
+        "variants": [
+          {
+            "key": "control",
+            "name": "Control",
+            "rollout_percentage": 50
+          },
+          {
+            "key": "test",
+            "name": "New Flow",
+            "rollout_percentage": 50
+          }
+        ]
+      },
+      "payloads": {
+        "control": "{\"button_color\": \"blue\"}",
+        "test": "{\"button_color\": \"green\"}"
+      }
+    }
+  }'
+```
+</CodeGroup>
+
+### Flag with Cohort Filter
+
+<CodeGroup>
+```bash cURL
+curl -X POST https://app.posthog.com/api/projects/:project_id/feature_flags \
+  -H "Authorization: Bearer <ph_project_api_key>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "key": "premium-features",
+    "name": "Premium Features",
+    "filters": {
+      "groups": [
+        {
+          "properties": [
+            {
+              "key": "id",
+              "type": "cohort",
+              "value": 123
+            }
+          ],
+          "rollout_percentage": 100
+        }
+      ]
+    }
+  }'
+```
+</CodeGroup>
+
+<Note>
+  **Validation Rules:**
+  - Flag key must be unique within the project
+  - At least one condition group required
+  - Multivariate variant rollout percentages must sum to 100
+  - Property values in lists cannot exceed 1000 items (10 in tests)
+  - Cohorts with behavioral filters (events) cannot be used in feature flags
+  - Maximum flag filter size is configurable per deployment
+</Note>
+
+## Response Example
+
+```json
+{
+  "id": 12345,
+  "key": "new-dashboard",
+  "name": "New Dashboard Design",
+  "filters": {
+    "groups": [
+      {
+        "rollout_percentage": 20,
+        "properties": []
+      }
+    ]
+  },
+  "deleted": false,
+  "active": true,
+  "created_by": {
+    "id": 1,
+    "uuid": "01234567-89ab-cdef-0123-456789abcdef",
+    "distinct_id": "user@example.com",
+    "first_name": "Jane",
+    "email": "user@example.com"
+  },
+  "created_at": "2024-01-15T10:30:00Z",
+  "updated_at": "2024-01-15T10:30:00Z",
+  "ensure_experience_continuity": false,
+  "rollback_conditions": null,
+  "performed_rollback": false,
+  "tags": [],
+  "evaluation_tags": [],
+  "version": 1,
+  "can_edit": true,
+  "usage_dashboard": null,
+  "analytics_dashboards": [],
+  "has_enriched_analytics": false
+}
+```

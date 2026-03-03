@@ -1,0 +1,430 @@
+---
+title: Create Cohort
+description: Create a new cohort to group users based on properties or behaviors.
+---
+
+# Create Cohort
+
+Create a new cohort (user segment) in your project. Cohorts can be static (fixed list of users) or dynamic (automatically updated based on filters).
+
+## Endpoint
+
+```http
+POST /api/projects/:project_id/cohorts/
+```
+
+## Path Parameters
+
+<ParamField path="project_id" type="integer" required>
+  The ID of the project to create the cohort in
+</ParamField>
+
+## Request Body
+
+<ParamField body="name" type="string" required>
+  Name of the cohort (e.g., "Active Users", "Power Users")
+</ParamField>
+
+<ParamField body="description" type="string">
+  Optional description explaining what this cohort represents
+</ParamField>
+
+<ParamField body="is_static" type="boolean" default={false}>
+  Whether this is a static cohort (fixed list) or dynamic (auto-updating based on filters)
+</ParamField>
+
+<ParamField body="filters" type="object">
+  Filter criteria for dynamic cohorts. Must contain a `properties` key with filter groups.
+  
+  Example structure:
+  ```json
+  {
+    "properties": {
+      "type": "AND",
+      "values": [
+        {
+          "type": "person",
+          "key": "email",
+          "operator": "is_set",
+          "value": null
+        }
+      ]
+    }
+  }
+  ```
+</ParamField>
+
+<ParamField body="query" type="object">
+  HogQL query for creating static cohorts from query results. Must be either `ActorsQuery` or `HogQLQuery` type.
+</ParamField>
+
+<ParamField body="groups" type="array">
+  Legacy filter format (deprecated). Use `filters` instead.
+</ParamField>
+
+<ParamField body="csv" type="file">
+  CSV file to upload for static cohorts. File should contain person IDs, distinct IDs, or email addresses.
+  
+  Supported column headers:
+  - `person_id`, `person-id`, or `Person .id`
+  - `distinct_id` or `distinct-id`
+  - `email` or `e-mail`
+</ParamField>
+
+## Response Fields
+
+<ResponseField name="id" type="integer">
+  Unique identifier for the cohort
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Name of the cohort
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  Description of the cohort
+</ResponseField>
+
+<ResponseField name="filters" type="object">
+  Filter criteria defining the cohort membership
+</ResponseField>
+
+<ResponseField name="is_static" type="boolean">
+  Whether this cohort is static (true) or dynamic (false)
+</ResponseField>
+
+<ResponseField name="count" type="integer">
+  Number of users currently in the cohort
+</ResponseField>
+
+<ResponseField name="is_calculating" type="boolean">
+  Whether the cohort is currently being calculated
+</ResponseField>
+
+<ResponseField name="created_by" type="object">
+  User who created the cohort
+</ResponseField>
+
+<ResponseField name="created_at" type="string">
+  ISO 8601 timestamp of when the cohort was created
+</ResponseField>
+
+<ResponseField name="last_calculation" type="string">
+  ISO 8601 timestamp of the last time the cohort was calculated
+</ResponseField>
+
+<ResponseField name="cohort_type" type="string">
+  Type of cohort (e.g., "realtime" for real-time evaluation)
+</ResponseField>
+
+## Examples
+
+### Create Dynamic Cohort
+
+Create a cohort of users who have an email address set:
+
+<CodeGroup>
+```bash cURL
+curl -X POST https://app.posthog.com/api/projects/12345/cohorts/ \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Users with Email",
+    "description": "All users who have provided an email address",
+    "is_static": false,
+    "filters": {
+      "properties": {
+        "type": "AND",
+        "values": [
+          {
+            "type": "person",
+            "key": "email",
+            "operator": "is_set"
+          }
+        ]
+      }
+    }
+  }'
+```
+
+```python Python
+import posthog
+
+posthog.project_api_key = 'YOUR_API_KEY'
+
+cohort = posthog.post('/api/projects/12345/cohorts/', data={
+    'name': 'Users with Email',
+    'description': 'All users who have provided an email address',
+    'is_static': False,
+    'filters': {
+        'properties': {
+            'type': 'AND',
+            'values': [
+                {
+                    'type': 'person',
+                    'key': 'email',
+                    'operator': 'is_set'
+                }
+            ]
+        }
+    }
+})
+
+print(f"Created cohort with ID: {cohort['id']}")
+```
+
+```javascript JavaScript
+const response = await fetch('https://app.posthog.com/api/projects/12345/cohorts/', {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Bearer YOUR_API_KEY',
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    name: 'Users with Email',
+    description: 'All users who have provided an email address',
+    is_static: false,
+    filters: {
+      properties: {
+        type: 'AND',
+        values: [
+          {
+            type: 'person',
+            key: 'email',
+            operator: 'is_set'
+          }
+        ]
+      }
+    }
+  })
+});
+
+const cohort = await response.json();
+console.log(`Created cohort with ID: ${cohort.id}`);
+```
+</CodeGroup>
+
+### Create Static Cohort
+
+Create a static cohort by uploading a CSV file:
+
+<CodeGroup>
+```bash cURL
+curl -X POST https://app.posthog.com/api/projects/12345/cohorts/ \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -F "name=VIP Customers" \
+  -F "description=Our most valuable customers" \
+  -F "is_static=true" \
+  -F "csv=@customers.csv"
+```
+
+```python Python
+import posthog
+import requests
+
+files = {'csv': open('customers.csv', 'rb')}
+data = {
+    'name': 'VIP Customers',
+    'description': 'Our most valuable customers',
+    'is_static': True
+}
+
+response = requests.post(
+    'https://app.posthog.com/api/projects/12345/cohorts/',
+    headers={'Authorization': 'Bearer YOUR_API_KEY'},
+    data=data,
+    files=files
+)
+
+cohort = response.json()
+print(f"Created cohort with ID: {cohort['id']}")
+```
+
+```javascript JavaScript
+const formData = new FormData();
+formData.append('name', 'VIP Customers');
+formData.append('description', 'Our most valuable customers');
+formData.append('is_static', 'true');
+formData.append('csv', fileInput.files[0]);
+
+const response = await fetch('https://app.posthog.com/api/projects/12345/cohorts/', {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Bearer YOUR_API_KEY'
+  },
+  body: formData
+});
+
+const cohort = await response.json();
+console.log(`Created cohort with ID: ${cohort.id}`);
+```
+</CodeGroup>
+
+### Create Behavioral Cohort
+
+Create a cohort based on user actions (users who completed onboarding):
+
+<CodeGroup>
+```bash cURL
+curl -X POST https://app.posthog.com/api/projects/12345/cohorts/ \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Completed Onboarding",
+    "description": "Users who finished the onboarding flow",
+    "is_static": false,
+    "filters": {
+      "properties": {
+        "type": "AND",
+        "values": [
+          {
+            "type": "behavioral",
+            "key": "onboarding_complete",
+            "value": "performed_event",
+            "event_type": "events",
+            "time_value": 30,
+            "time_interval": "day"
+          }
+        ]
+      }
+    }
+  }'
+```
+
+```python Python
+import posthog
+
+posthog.project_api_key = 'YOUR_API_KEY'
+
+cohort = posthog.post('/api/projects/12345/cohorts/', data={
+    'name': 'Completed Onboarding',
+    'description': 'Users who finished the onboarding flow',
+    'is_static': False,
+    'filters': {
+        'properties': {
+            'type': 'AND',
+            'values': [
+                {
+                    'type': 'behavioral',
+                    'key': 'onboarding_complete',
+                    'value': 'performed_event',
+                    'event_type': 'events',
+                    'time_value': 30,
+                    'time_interval': 'day'
+                }
+            ]
+        }
+    }
+})
+
+print(f"Created cohort with ID: {cohort['id']}")
+```
+
+```javascript JavaScript
+const response = await fetch('https://app.posthog.com/api/projects/12345/cohorts/', {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Bearer YOUR_API_KEY',
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    name: 'Completed Onboarding',
+    description: 'Users who finished the onboarding flow',
+    is_static: false,
+    filters: {
+      properties: {
+        type: 'AND',
+        values: [
+          {
+            type: 'behavioral',
+            key: 'onboarding_complete',
+            value: 'performed_event',
+            event_type: 'events',
+            time_value: 30,
+            time_interval: 'day'
+          }
+        ]
+      }
+    }
+  })
+});
+
+const cohort = await response.json();
+console.log(`Created cohort with ID: ${cohort.id}`);
+```
+</CodeGroup>
+
+## Response
+
+```json
+{
+  "id": 789,
+  "name": "Users with Email",
+  "description": "All users who have provided an email address",
+  "filters": {
+    "properties": {
+      "type": "AND",
+      "values": [
+        {
+          "type": "person",
+          "key": "email",
+          "operator": "is_set"
+        }
+      ]
+    }
+  },
+  "is_static": false,
+  "count": 0,
+  "is_calculating": true,
+  "created_by": {
+    "id": 123,
+    "uuid": "01234567-89ab-cdef-0123-456789abcdef",
+    "distinct_id": "user@example.com",
+    "first_name": "Jane",
+    "email": "jane@example.com"
+  },
+  "created_at": "2024-01-15T10:30:00Z",
+  "last_calculation": null,
+  "errors_calculating": 0,
+  "deleted": false,
+  "cohort_type": "realtime",
+  "version": null,
+  "pending_version": 1
+}
+```
+
+## Error Responses
+
+<ResponseField name="400 Bad Request" type="error">
+  Invalid request body or missing required fields
+  
+  ```json
+  {
+    "type": "validation_error",
+    "detail": "Must contain a 'properties' key with type and values"
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="401 Unauthorized" type="error">
+  Invalid or missing API key
+</ResponseField>
+
+<ResponseField name="403 Forbidden" type="error">
+  Insufficient permissions to create cohorts
+</ResponseField>
+
+## Notes
+
+- Dynamic cohorts are recalculated periodically to keep membership up to date
+- Static cohorts have fixed membership unless manually updated
+- Behavioral filters cannot be used in cohorts that are referenced by feature flags
+- CSV uploads support person IDs, distinct IDs, and email addresses
+- Large cohorts may take time to calculate; check `is_calculating` status
+- Real-time cohorts (for feature flags) have a maximum size limit
+
+## Related Endpoints
+
+- [List Cohorts](/api/cohorts/list) - Retrieve all cohorts
+- [Update Cohort](/api/cohorts/update) - Modify an existing cohort
+- [Get Cohort Persons](/api/cohorts/persons) - List users in a cohort

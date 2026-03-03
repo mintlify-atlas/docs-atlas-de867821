@@ -1,0 +1,579 @@
+---
+title: Self-Hosting PostHog
+description: Deploy PostHog on your infrastructure using Docker Compose, configure environment variables, and scale your installation
+---
+
+# Self-Hosting PostHog
+
+PostHog can be self-hosted on your own infrastructure using Docker Compose. This guide covers deployment, configuration, and scaling for production environments.
+
+<Note>
+  PostHog has sunset support for Kubernetes deployments. The recommended self-hosting approach is Docker Compose. See the [blog post](https://posthog.com/blog/sunsetting-helm-support-posthog) for details.
+</Note>
+
+## Deployment Overview
+
+PostHog's architecture includes:
+
+- **Web server** - Django application (main API)
+- **Worker** - Celery workers for background tasks
+- **Plugins** - Node.js service for data processing
+- **ClickHouse** - Columnar database for analytics
+- **PostgreSQL** - Relational database for metadata
+- **Redis** - Cache and message broker
+- **Kafka** - Event streaming (via Redpanda)
+- **MinIO** - Object storage for recordings
+- **Temporal** - Workflow orchestration
+
+## Quick Start with Docker Compose
+
+### Prerequisites
+
+- Docker Engine 20.10+
+- Docker Compose v2.0+
+- 4GB RAM minimum (8GB+ recommended)
+- 10GB disk space minimum
+
+### Installation
+
+<Steps>
+  <Step title="Clone Repository">
+    ```bash
+    git clone https://github.com/PostHog/posthog.git
+    cd posthog
+    ```
+  </Step>
+  
+  <Step title="Set Environment Variables">
+    Create `.env` file:
+    ```bash
+    DOMAIN=yourdomain.com
+    POSTHOG_SECRET=$(openssl rand -hex 32)
+    ENCRYPTION_SALT_KEYS=$(openssl rand -hex 32)
+    POSTGRES_PASSWORD=posthog
+    ```
+  </Step>
+  
+  <Step title="Launch Services">
+    ```bash
+    docker compose -f docker-compose.hobby.yml up -d
+    ```
+  </Step>
+  
+  <Step title="Access PostHog">
+    Navigate to `https://yourdomain.com` and complete setup
+  </Step>
+</Steps>
+
+## Docker Compose Files
+
+PostHog provides several compose configurations:
+
+- **`docker-compose.base.yml`** - Base services (database, cache, etc.)
+- **`docker-compose.hobby.yml`** - Hobby deployment (all-in-one)
+- **`docker-compose.dev.yml`** - Local development
+- **`docker-compose.profiles.yml`** - Optional service profiles
+
+From `docker-compose.base.yml:1-610` and `docker-compose.hobby.yml:1-440`.
+
+## Environment Variables
+
+### Required Variables
+
+```bash
+# Core Configuration
+SITE_URL=https://posthog.example.com
+SECRET_KEY=your-secret-key-here  # Django secret
+ENCRYPTION_SALT_KEYS=your-encryption-key  # For sensitive data
+
+# Database
+DATABASE_URL=postgres://posthog:password@db:5432/posthog
+PGHOST=db
+PGUSER=posthog
+PGPASSWORD=posthog
+
+# ClickHouse
+CLICKHOUSE_HOST=clickhouse
+CLICKHOUSE_DATABASE=posthog
+CLICKHOUSE_SECURE=false
+CLICKHOUSE_VERIFY=false
+CLICKHOUSE_API_USER=api
+CLICKHOUSE_API_PASSWORD=apipass
+CLICKHOUSE_APP_USER=app
+CLICKHOUSE_APP_PASSWORD=apppass
+
+# Redis
+REDIS_URL=redis://redis7:6379/
+
+# Kafka (Redpanda)
+KAFKA_HOSTS=kafka:9092
+```
+
+### Optional Configuration
+
+<Accordion title="Email Configuration">
+  Configure SMTP for notifications:
+  
+  ```bash
+  EMAIL_HOST=smtp.gmail.com
+  EMAIL_PORT=587
+  EMAIL_HOST_USER=your-email@gmail.com
+  EMAIL_HOST_PASSWORD=your-app-password
+  EMAIL_USE_TLS=true
+  EMAIL_DEFAULT_FROM=noreply@posthog.example.com
+  ```
+</Accordion>
+
+<Accordion title="Object Storage">
+  For session recordings and exports:
+  
+  ```bash
+  # MinIO (default)
+  OBJECT_STORAGE_ENABLED=true
+  OBJECT_STORAGE_ENDPOINT=http://objectstorage:19000
+  OBJECT_STORAGE_ACCESS_KEY_ID=object_storage_root_user
+  OBJECT_STORAGE_SECRET_ACCESS_KEY=object_storage_root_password
+  
+  # AWS S3
+  OBJECT_STORAGE_ENDPOINT=https://s3.amazonaws.com
+  OBJECT_STORAGE_BUCKET=posthog-recordings
+  OBJECT_STORAGE_ACCESS_KEY_ID=AWS_ACCESS_KEY
+  OBJECT_STORAGE_SECRET_ACCESS_KEY=AWS_SECRET_KEY
+  ```
+</Accordion>
+
+<Accordion title="Authentication Providers">
+  Enable social login:
+  
+  ```bash
+  # Google OAuth
+  SOCIAL_AUTH_GOOGLE_OAUTH2_KEY=your-client-id
+  SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET=your-client-secret
+  
+  # GitHub OAuth
+  SOCIAL_AUTH_GITHUB_KEY=your-client-id
+  SOCIAL_AUTH_GITHUB_SECRET=your-client-secret
+  
+  # GitLab OAuth
+  SOCIAL_AUTH_GITLAB_KEY=your-application-id
+  SOCIAL_AUTH_GITLAB_SECRET=your-secret
+  SOCIAL_AUTH_GITLAB_API_URL=https://gitlab.com
+  ```
+</Accordion>
+
+<Accordion title="Feature Flags">
+  Control feature availability:
+  
+  ```bash
+  # Disable specific features
+  DISABLE_PAID_FEATURE_SHOWCASING=true
+  
+  # Enable experimental features
+  PLUGIN_SERVER_IDLE=true
+  
+  # Rate limiting
+  API_QUERIES_PER_TEAM='{"1": 100}'
+  ```
+</Accordion>
+
+### Security Variables
+
+```bash
+# Force HTTPS
+DISABLE_SECURE_SSL_REDIRECT=false
+IS_BEHIND_PROXY=true
+
+# Session security
+SESSION_COOKIE_AGE=7776000  # 90 days
+SESSION_COOKIE_SECURE=true
+
+# CORS
+CORS_ALLOWED_ORIGINS=https://app.example.com
+
+# Trusted origins
+CSRF_TRUSTED_ORIGINS=https://posthog.example.com
+```
+
+## Service Configuration
+
+### Web Server
+
+The main Django application handles API requests:
+
+```yaml
+# From docker-compose.hobby.yml:100-135
+web:
+  image: posthog/posthog:latest
+  command: /compose/start
+  environment:
+    SITE_URL: https://${DOMAIN}
+    SECRET_KEY: ${POSTHOG_SECRET}
+    DEPLOYMENT: hobby
+    USE_GRANIAN: 'true'
+    GRANIAN_WORKERS: '2'
+  depends_on:
+    - db
+    - redis7
+    - clickhouse
+    - kafka
+```
+
+<Info>
+  `GRANIAN_WORKERS` controls the number of web server processes. Increase for higher concurrency.
+</Info>
+
+### Worker Service
+
+Celery workers process background tasks:
+
+```yaml
+# From docker-compose.base.yml:241-265
+worker:
+  command: ./bin/docker-worker-celery --with-scheduler
+  environment:
+    DEPLOYMENT: hobby
+    DATABASE_URL: postgres://posthog:posthog@db:5432/posthog
+```
+
+Worker tasks include:
+- Event processing
+- Scheduled reports
+- Data exports
+- Async migrations
+
+### Plugins Service
+
+Node.js service for data transformations:
+
+```yaml
+# From docker-compose.hobby.yml:137-174
+plugins:
+  image: posthog/posthog-node:latest
+  command: node nodejs/dist/index.js
+  environment:
+    DATABASE_URL: postgres://posthog:posthog@db:5432/posthog
+    KAFKA_HOSTS: kafka:9092
+```
+
+Handles:
+- Data pipelines
+- GeoIP lookups
+- Custom transformations
+
+## Database Configuration
+
+### PostgreSQL
+
+Stores user data, organizations, and metadata:
+
+```yaml
+db:
+  image: postgres:15.12-alpine
+  environment:
+    POSTGRES_USER: posthog
+    POSTGRES_DB: posthog
+    POSTGRES_PASSWORD: posthog
+  volumes:
+    - postgres-data:/var/lib/postgresql/data
+```
+
+**Performance tuning:**
+
+```sql
+-- In postgresql.conf
+max_connections = 200
+shared_buffers = 2GB
+effective_cache_size = 6GB
+work_mem = 16MB
+maintenance_work_mem = 512MB
+```
+
+### ClickHouse
+
+Columnar database for event analytics:
+
+```yaml
+clickhouse:
+  image: clickhouse/clickhouse-server:25.12.5.44
+  environment:
+    CLICKHOUSE_SKIP_USER_SETUP: 1
+    KAFKA_HOSTS: kafka:9092
+  volumes:
+    - clickhouse-data:/var/lib/clickhouse
+    - ./docker/clickhouse/config.xml:/etc/clickhouse-server/config.xml
+    - ./docker/clickhouse/users.xml:/etc/clickhouse-server/users.xml
+```
+
+**Important configuration files:**
+
+- `config.xml` - Server settings, networking
+- `users.xml` - User definitions and quotas
+- `user_defined_function.xml` - Custom SQL functions
+
+<Warning>
+  ClickHouse stores all event data. Plan for 1-2GB per million events.
+</Warning>
+
+## Scaling Your Installation
+
+### Horizontal Scaling
+
+Scale individual services:
+
+```bash
+# Scale web servers
+docker compose -f docker-compose.hobby.yml up -d --scale web=3
+
+# Scale workers
+docker compose -f docker-compose.hobby.yml up -d --scale worker=5
+```
+
+### Resource Allocation
+
+Recommended resources by deployment size:
+
+| Events/Month | CPU | RAM | Storage |
+|--------------|-----|-----|----------|
+| < 1M | 2 cores | 4GB | 50GB |
+| 1-10M | 4 cores | 8GB | 200GB |
+| 10-100M | 8 cores | 16GB | 1TB |
+| 100M+ | Contact for enterprise deployment |
+
+### Performance Optimization
+
+<Steps>
+  <Step title="Enable Redis Persistence">
+    ```yaml
+    redis7:
+      command: redis-server --appendonly yes --maxmemory-policy allkeys-lru
+      volumes:
+        - redis7-data:/data
+    ```
+  </Step>
+  
+  <Step title="Configure ClickHouse Partitioning">
+    Edit `docker/clickhouse/config.xml`:
+    ```xml
+    <merge_tree>
+      <max_parts_in_total>10000</max_parts_in_total>
+      <max_bytes_to_merge_at_max_space_in_pool>161061273600</max_bytes_to_merge_at_max_space_in_pool>
+    </merge_tree>
+    ```
+  </Step>
+  
+  <Step title="Optimize Kafka Topics">
+    ```bash
+    # Increase retention for high-volume
+    KAFKA_LOG_RETENTION_MS=3600000  # 1 hour
+    KAFKA_LOG_RETENTION_CHECK_INTERVAL_MS=300000
+    ```
+  </Step>
+</Steps>
+
+## High Availability Setup
+
+### Database Replication
+
+PostgresSQL primary-replica setup:
+
+```yaml
+db-replica:
+  image: postgres:15.12-alpine
+  environment:
+    POSTGRES_USER: posthog
+    POSTGRES_PASSWORD: posthog
+    POSTGRES_PRIMARY_HOST: db
+    POSTGRES_PRIMARY_PORT: 5432
+  command: |
+    -c wal_level=replica
+    -c hot_standby=on
+    -c max_wal_senders=10
+```
+
+### Load Balancing
+
+Use the built-in Caddy proxy or external load balancer:
+
+```yaml
+# From docker-compose.base.yml:6-119
+proxy:
+  image: caddy
+  environment:
+    CADDY_HOST: 'yourdomain.com'
+    CADDY_TLS_BLOCK: 'your-tls-config'
+  ports:
+    - '80:80'
+    - '443:443'
+```
+
+## Backup and Restore
+
+### PostgreSQL Backup
+
+```bash
+# Backup
+docker exec -t posthog-db-1 pg_dump -U posthog posthog > backup.sql
+
+# Restore
+docker exec -i posthog-db-1 psql -U posthog posthog < backup.sql
+```
+
+### ClickHouse Backup
+
+```bash
+# Backup specific table
+docker exec posthog-clickhouse-1 clickhouse-client --query="SELECT * FROM posthog.events FORMAT Native" > events.native
+
+# Or use clickhouse-backup tool
+docker exec posthog-clickhouse-1 clickhouse-backup create
+```
+
+### Full System Backup
+
+```bash
+# Stop services
+docker compose -f docker-compose.hobby.yml down
+
+# Backup volumes
+docker run --rm -v posthog_postgres-data:/data -v $(pwd):/backup alpine tar czf /backup/postgres.tar.gz -C /data .
+docker run --rm -v posthog_clickhouse-data:/data -v $(pwd):/backup alpine tar czf /backup/clickhouse.tar.gz -C /data .
+
+# Restart services
+docker compose -f docker-compose.hobby.yml up -d
+```
+
+## Monitoring and Observability
+
+### Health Checks
+
+All services include health checks:
+
+```yaml
+healthcheck:
+  test: ['CMD', 'curl', '-f', 'http://localhost:8000/_health']
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 40s
+```
+
+### Metrics Collection
+
+PostHog exposes Prometheus metrics at `/metrics`:
+
+```bash
+# Example metrics
+posthog_events_ingested_total
+posthog_celery_queue_length
+posthog_clickhouse_query_duration_seconds
+```
+
+### Log Aggregation
+
+Configure OpenTelemetry collector:
+
+```yaml
+# From docker-compose.base.yml:525-543
+otel-collector:
+  image: otel/opentelemetry-collector-contrib:0.142.0
+  command: [--config=/etc/otel-collector-config.yaml]
+  volumes:
+    - ./otel-collector-config.dev.yaml:/etc/otel-collector-config.yaml
+  ports:
+    - '4317:4317'  # OTLP gRPC
+    - '4318:4318'  # OTLP HTTP
+```
+
+## Troubleshooting
+
+### Common Issues
+
+<Accordion title="Services Won't Start">
+  **Check logs:**
+  ```bash
+  docker compose -f docker-compose.hobby.yml logs web
+  docker compose -f docker-compose.hobby.yml logs worker
+  ```
+  
+  **Common causes:**
+  - Missing environment variables
+  - Port conflicts (8000, 5432, 9000 in use)
+  - Insufficient disk space
+  - Docker memory limits
+</Accordion>
+
+<Accordion title="Database Connection Errors">
+  **Error:** `fe_sendauth: no password supplied`
+  
+  **Fix:** Ensure `DATABASE_URL` includes credentials:
+  ```bash
+  DATABASE_URL=postgres://posthog:posthog@db:5432/posthog
+  ```
+</Accordion>
+
+<Accordion title="ClickHouse Out of Memory">
+  **Increase memory limits:**
+  ```yaml
+  clickhouse:
+    environment:
+      CLICKHOUSE_MAX_MEMORY_USAGE: 10000000000  # 10GB
+  ```
+  
+  Or reduce data retention:
+  ```sql
+  ALTER TABLE events MODIFY TTL timestamp + INTERVAL 30 DAY;
+  ```
+</Accordion>
+
+<Accordion title="Kafka/Redpanda Issues">
+  **Reset Kafka topics:**
+  ```bash
+  docker exec posthog-kafka-1 rpk topic delete events_plugin_ingestion
+  docker compose -f docker-compose.hobby.yml restart kafka
+  ```
+  
+  **Check topic status:**
+  ```bash
+  docker exec posthog-kafka-1 rpk topic list
+  ```
+</Accordion>
+
+## Upgrading PostHog
+
+<Steps>
+  <Step title="Backup Data">
+    Create backups of PostgreSQL and ClickHouse
+  </Step>
+  
+  <Step title="Pull Latest Images">
+    ```bash
+    docker compose -f docker-compose.hobby.yml pull
+    ```
+  </Step>
+  
+  <Step title="Run Migrations">
+    ```bash
+    docker compose -f docker-compose.hobby.yml run --rm migrate
+    ```
+  </Step>
+  
+  <Step title="Restart Services">
+    ```bash
+    docker compose -f docker-compose.hobby.yml up -d
+    ```
+  </Step>
+  
+  <Step title="Verify Health">
+    Check `https://yourdomain.com/_health`
+  </Step>
+</Steps>
+
+<Warning>
+  Always test upgrades in a staging environment first. Some migrations can take hours on large datasets.
+</Warning>
+
+## Related Resources
+
+- [Managing Organizations](/configuration/organizations)
+- [Project Configuration](/configuration/projects)
+- [Authentication Setup](/configuration/authentication)

@@ -1,0 +1,507 @@
+---
+title: React Integration
+description: Add PostHog to your React application with hooks and components
+---
+
+The PostHog React integration provides a seamless way to add analytics, feature flags, and session replay to your React applications using hooks and context providers.
+
+## Installation
+
+Install both `posthog-js` and the React wrapper:
+
+<Tabs>
+  <Tab title="npm">
+    ```bash
+    npm install posthog-js @posthog/react
+    ```
+  </Tab>
+  <Tab title="yarn">
+    ```bash
+    yarn add posthog-js @posthog/react
+    ```
+  </Tab>
+  <Tab title="pnpm">
+    ```bash
+    pnpm add posthog-js @posthog/react
+    ```
+  </Tab>
+</Tabs>
+
+## Setup
+
+<Steps>
+  <Step title="Add environment variables">
+    Create or update your `.env` file with your PostHog credentials. For Vite-based apps, use the `VITE_PUBLIC_` prefix:
+    
+    ```bash .env
+    VITE_PUBLIC_POSTHOG_KEY=<ph_project_token>
+    VITE_PUBLIC_POSTHOG_HOST=<ph_client_api_host>
+    ```
+    
+    For Create React App, use the `REACT_APP_` prefix:
+    
+    ```bash .env
+    REACT_APP_POSTHOG_KEY=<ph_project_token>
+    REACT_APP_POSTHOG_HOST=<ph_client_api_host>
+    ```
+  </Step>
+  
+  <Step title="Wrap your app with PostHogProvider">
+    Add the `PostHogProvider` at the root of your application (typically in `main.tsx` or `index.tsx`):
+    
+    <CodeGroup>
+    ```tsx Vite (main.tsx)
+    import { StrictMode } from 'react'
+    import { createRoot } from 'react-dom/client'
+    import './index.css'
+    import App from './App.jsx'
+    import { PostHogProvider } from '@posthog/react'
+
+    const options = {
+      api_host: import.meta.env.VITE_PUBLIC_POSTHOG_HOST,
+      defaults: '2026-01-30',
+    } as const
+
+    createRoot(document.getElementById('root')).render(
+      <StrictMode>
+        <PostHogProvider 
+          apiKey={import.meta.env.VITE_PUBLIC_POSTHOG_KEY} 
+          options={options}
+        >
+          <App />
+        </PostHogProvider>
+      </StrictMode>
+    )
+    ```
+    
+    ```tsx Create React App (index.tsx)
+    import React from 'react'
+    import ReactDOM from 'react-dom/client'
+    import './index.css'
+    import App from './App'
+    import { PostHogProvider } from '@posthog/react'
+
+    const root = ReactDOM.createRoot(
+      document.getElementById('root') as HTMLElement
+    )
+
+    root.render(
+      <React.StrictMode>
+        <PostHogProvider
+          apiKey={process.env.REACT_APP_POSTHOG_KEY}
+          options={{
+            api_host: process.env.REACT_APP_POSTHOG_HOST,
+            defaults: '2026-01-30'
+          }}
+        >
+          <App />
+        </PostHogProvider>
+      </React.StrictMode>
+    )
+    ```
+    </CodeGroup>
+    
+    <Note>
+    The `defaults` option automatically configures PostHog with recommended settings. See [SDK defaults](https://posthog.com/docs/libraries/js#sdk-defaults) for details.
+    </Note>
+  </Step>
+  
+  <Step title="Verify installation">
+    Check your browser's developer console for PostHog logs, or visit your [Activity feed](https://app.posthog.com/activity/explore) to see events.
+  </Step>
+</Steps>
+
+## Using the usePostHog Hook
+
+Access the PostHog instance in any component using the `usePostHog` hook:
+
+```tsx MyComponent.tsx
+import { usePostHog } from '@posthog/react'
+
+function MyComponent() {
+  const posthog = usePostHog()
+
+  function handleClick() {
+    posthog.capture('button_clicked', { 
+      button_name: 'signup',
+      page: 'homepage'
+    })
+  }
+
+  return <button onClick={handleClick}>Sign up</button>
+}
+```
+
+## Capturing Events
+
+### Custom Events
+
+```tsx
+import { usePostHog } from '@posthog/react'
+
+function ProductPage() {
+  const posthog = usePostHog()
+
+  const handlePurchase = (product, amount) => {
+    posthog.capture('purchase_completed', {
+      product_id: product.id,
+      product_name: product.name,
+      amount: amount,
+      currency: 'USD'
+    })
+  }
+
+  return (
+    <button onClick={() => handlePurchase(product, 99.99)}>
+      Buy Now
+    </button>
+  )
+}
+```
+
+### Track Component Lifecycle
+
+```tsx
+import { useEffect } from 'react'
+import { usePostHog } from '@posthog/react'
+
+function Dashboard() {
+  const posthog = usePostHog()
+
+  useEffect(() => {
+    posthog.capture('dashboard_viewed')
+  }, [])
+
+  return <div>Dashboard Content</div>
+}
+```
+
+## Identifying Users
+
+### On Login
+
+```tsx
+import { usePostHog } from '@posthog/react'
+
+function LoginForm() {
+  const posthog = usePostHog()
+
+  const handleLogin = async (email, password) => {
+    const user = await login(email, password)
+    
+    posthog.identify(user.id, {
+      email: user.email,
+      name: user.name,
+      plan: user.plan
+    })
+  }
+
+  return <form onSubmit={handleLogin}>{/* ... */}</form>
+}
+```
+
+### On Logout
+
+```tsx
+import { usePostHog } from '@posthog/react'
+
+function LogoutButton() {
+  const posthog = usePostHog()
+
+  const handleLogout = () => {
+    logout()
+    posthog.reset()
+  }
+
+  return <button onClick={handleLogout}>Logout</button>
+}
+```
+
+## Feature Flags
+
+### useFeatureFlagEnabled Hook
+
+Check if a feature flag is enabled:
+
+```tsx
+import { useFeatureFlagEnabled } from '@posthog/react'
+
+function FeatureComponent() {
+  const showNewDashboard = useFeatureFlagEnabled('new-dashboard')
+
+  if (showNewDashboard) {
+    return <NewDashboard />
+  }
+
+  return <OldDashboard />
+}
+```
+
+### useFeatureFlagVariantKey Hook
+
+Get the variant of a multivariate flag:
+
+```tsx
+import { useFeatureFlagVariantKey } from '@posthog/react'
+
+function ExperimentButton() {
+  const variant = useFeatureFlagVariantKey('button-color-experiment')
+
+  const buttonColor = {
+    'blue': '#0000FF',
+    'green': '#00FF00',
+    'red': '#FF0000'
+  }[variant] || '#808080'
+
+  return (
+    <button style={{ backgroundColor: buttonColor }}>
+      Click me
+    </button>
+  )
+}
+```
+
+### useFeatureFlagPayload Hook
+
+Retrieve feature flag payload data:
+
+```tsx
+import { useFeatureFlagPayload } from '@posthog/react'
+
+function ConfigurableComponent() {
+  const config = useFeatureFlagPayload('feature-config')
+
+  return (
+    <div>
+      <h1>{config?.title || 'Default Title'}</h1>
+      <p>Max items: {config?.maxItems || 10}</p>
+    </div>
+  )
+}
+```
+
+### Manual Flag Checking
+
+```tsx
+import { usePostHog } from '@posthog/react'
+
+function FeatureGate() {
+  const posthog = usePostHog()
+
+  const handleAction = () => {
+    if (posthog.isFeatureEnabled('premium-feature')) {
+      performPremiumAction()
+    } else {
+      showUpgradePrompt()
+    }
+  }
+
+  return <button onClick={handleAction}>Action</button>
+}
+```
+
+## Accessing PostHog Outside Components
+
+For utility functions or non-React code:
+
+```typescript utils/analytics.ts
+import posthog from 'posthog-js'
+
+export function trackPurchase(amount: number) {
+  posthog.capture('purchase_completed', { amount })
+}
+
+export function checkFeature(flagName: string): boolean {
+  return posthog.isFeatureEnabled(flagName)
+}
+```
+
+## React Router Integration
+
+Track route changes automatically:
+
+```tsx App.tsx
+import { useEffect } from 'react'
+import { useLocation } from 'react-router-dom'
+import { usePostHog } from '@posthog/react'
+
+function App() {
+  const location = useLocation()
+  const posthog = usePostHog()
+
+  useEffect(() => {
+    posthog.capture('$pageview')
+  }, [location, posthog])
+
+  return <Routes>{/* your routes */}</Routes>
+}
+```
+
+## Group Analytics
+
+Track events for organizations or teams:
+
+```tsx
+import { usePostHog } from '@posthog/react'
+
+function OrganizationSettings() {
+  const posthog = usePostHog()
+
+  useEffect(() => {
+    posthog.group('company', 'company_id_123', {
+      name: 'Acme Corporation',
+      plan: 'enterprise'
+    })
+  }, [])
+
+  const handleFeatureUse = () => {
+    posthog.capture('feature_used', {
+      feature_name: 'advanced_analytics'
+    })
+  }
+
+  return <div>{/* ... */}</div>
+}
+```
+
+## Advanced Configuration
+
+<CodeGroup>
+```tsx Session Recording
+import { PostHogProvider } from '@posthog/react'
+
+const options = {
+  api_host: import.meta.env.VITE_PUBLIC_POSTHOG_HOST,
+  session_recording: {
+    recordCrossOriginIframes: true,
+    maskAllInputs: false,
+    maskInputOptions: {
+      password: true,
+      email: true
+    }
+  }
+}
+
+root.render(
+  <PostHogProvider apiKey={apiKey} options={options}>
+    <App />
+  </PostHogProvider>
+)
+```
+
+```tsx Disable Autocapture
+import { PostHogProvider } from '@posthog/react'
+
+const options = {
+  api_host: import.meta.env.VITE_PUBLIC_POSTHOG_HOST,
+  autocapture: false,
+  capture_pageview: false
+}
+
+root.render(
+  <PostHogProvider apiKey={apiKey} options={options}>
+    <App />
+  </PostHogProvider>
+)
+```
+</CodeGroup>
+
+## Privacy Controls
+
+Mask sensitive elements in session replay:
+
+```tsx
+function SensitiveForm() {
+  return (
+    <form>
+      <input 
+        type="text" 
+        placeholder="Name" 
+      />
+      <input 
+        type="email" 
+        placeholder="Email"
+        className="ph-no-capture" // This input won't be recorded
+      />
+      <div className="ph-mask">
+        This text will be masked in recordings
+      </div>
+    </form>
+  )
+}
+```
+
+## TypeScript Support
+
+The SDK includes full TypeScript support:
+
+```tsx
+import { PostHog } from 'posthog-js'
+import { usePostHog } from '@posthog/react'
+
+interface CustomEventProperties {
+  button_name: string
+  page: string
+}
+
+function TypedComponent() {
+  const posthog: PostHog = usePostHog()
+
+  const handleClick = () => {
+    posthog.capture<CustomEventProperties>('button_clicked', {
+      button_name: 'signup',
+      page: 'homepage'
+    })
+  }
+
+  return <button onClick={handleClick}>Click</button>
+}
+```
+
+## Debugging
+
+Enable debug mode during development:
+
+```tsx
+import { PostHogProvider } from '@posthog/react'
+
+const options = {
+  api_host: import.meta.env.VITE_PUBLIC_POSTHOG_HOST,
+  debug: import.meta.env.DEV // Enable in development only
+}
+```
+
+## Best Practices
+
+<Note>
+**Provider Placement**: Always place `PostHogProvider` as high as possible in your component tree to ensure all components have access.
+</Note>
+
+<Note>
+**Avoid Over-tracking**: Don't track every click. Focus on meaningful user actions that help you understand product usage.
+</Note>
+
+<Note>
+**Use Hooks**: Prefer `usePostHog` and feature flag hooks over importing `posthog-js` directly for better React integration.
+</Note>
+
+<Note>
+**Reset on Logout**: Always call `posthog.reset()` when users log out to prevent data leakage between accounts.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Next.js Integration" href="https://posthog.com/docs/libraries/next-js">
+    Add PostHog to Next.js with SSR support
+  </Card>
+  <Card title="Feature Flags" href="https://posthog.com/docs/feature-flags">
+    Learn advanced feature flag patterns
+  </Card>
+  <Card title="Session Replay" href="https://posthog.com/docs/session-replay">
+    Configure privacy and recording options
+  </Card>
+  <Card title="JavaScript SDK" href="/integration/javascript">
+    Full JavaScript SDK reference
+  </Card>
+</CardGroup>

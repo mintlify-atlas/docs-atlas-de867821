@@ -1,0 +1,186 @@
+---
+title: System Architecture
+description: Overview of PostHog's technical architecture and technology stack
+---
+
+PostHog is built as a Django monolith with a modern product-oriented structure. The platform combines Django, React, and ClickHouse to deliver a comprehensive product analytics suite.
+
+## Technology Stack
+
+PostHog's core architecture is built on three main technologies:
+
+<Steps>
+  <Step title="Django Backend">
+    The backend is built on Django, providing:
+    - RESTful APIs using Django REST Framework (DRF)
+    - PostgreSQL for application data and metadata
+    - Celery for background task processing
+    - Business logic and data orchestration
+  </Step>
+
+  <Step title="React Frontend">
+    The frontend uses a modern React stack:
+    - TypeScript for type safety
+    - Kea for state management
+    - Tailwind CSS for styling
+    - Vite for fast development builds
+  </Step>
+
+  <Step title="ClickHouse for Analytics">
+    ClickHouse handles high-volume analytical queries:
+    - Event storage and querying
+    - Fast aggregations and time-series analysis
+    - HogQL query language (SQL-like)
+    - Distributed architecture for scale
+  </Step>
+</Steps>
+
+## High-Level Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        Client SDKs                          │
+│         (JavaScript, Python, React Native, etc.)            │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Ingestion Layer                          │
+│          (Capture endpoints, feature flags)                 │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+        ┌────────────┴────────────┐
+        ▼                         ▼
+┌──────────────┐         ┌──────────────────┐
+│  PostgreSQL  │         │   ClickHouse     │
+│ (Metadata)   │         │ (Event Data)     │
+└──────────────┘         └──────────────────┘
+        │                         │
+        └────────────┬────────────┘
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   Django Application                        │
+│    (Business Logic, APIs, Background Tasks)                 │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    React Frontend                           │
+│         (UI, Visualizations, Analytics)                     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Key Components
+
+### API Layer
+
+PostHog's API layer is built with Django REST Framework:
+
+- **Views**: Handle HTTP requests and responses
+- **Serializers**: Define request/response schemas and validation
+- **Authentication**: Team-based access control
+- **Type Generation**: Automatic TypeScript types via OpenAPI
+
+<Info>
+Django serializers are the source of truth for API types. Run `hogli build:openapi` to generate TypeScript types for the frontend.
+</Info>
+
+### Query Engine
+
+The query engine translates user requests into optimized database queries:
+
+- **HogQL**: SQL-like query language for ClickHouse
+- **Query Runners**: Execute and optimize queries (`posthog/queries/`)
+- **Query Nodes**: AST-based query composition
+- **Caching**: Redis-based result caching
+
+### Background Processing
+
+Celery handles asynchronous tasks:
+
+- **Event ingestion**: Process incoming analytics events
+- **Scheduled jobs**: Periodic data aggregation and cleanup
+- **Exports**: Generate and send data exports
+- **Webhooks**: Trigger external integrations
+
+### Data Storage
+
+<Accordion title="PostgreSQL">
+Stores application metadata:
+- User accounts and teams
+- Feature flag definitions
+- Dashboard configurations
+- Cohort definitions
+</Accordion>
+
+<Accordion title="ClickHouse">
+Stores high-volume event data:
+- Product analytics events
+- Session recordings metadata
+- Person and group properties
+- Time-series metrics
+</Accordion>
+
+<Accordion title="Object Storage (S3)">
+Stores large binary data:
+- Session recording blobs
+- Export files
+- Upload artifacts
+</Accordion>
+
+## Deployment Architecture
+
+### PostHog Cloud
+
+PostHog Cloud runs on Kubernetes with:
+
+- **Multi-region deployment**: US and EU data residency
+- **Horizontal scaling**: Auto-scaling based on load
+- **Managed ClickHouse**: Dedicated clusters per customer tier
+- **CDN**: Global edge network for SDK delivery
+
+### Self-Hosted
+
+For self-hosted deployments:
+
+- **Docker Compose**: Single-server hobby deployments
+- **Resource requirements**: Minimum 4GB RAM, 2 CPU cores
+- **Scale limits**: ~100k events/month recommended
+
+<Note>
+PostHog has sunset support for self-hosted Kubernetes deployments. We recommend [PostHog Cloud](https://posthog.com/signup) for production use.
+</Note>
+
+## Data Flow
+
+1. **Event Capture**: Client SDKs send events to capture endpoints
+2. **Ingestion**: Events are validated, enriched, and queued
+3. **Processing**: Background workers process and store events
+4. **Storage**: Events land in ClickHouse, metadata in PostgreSQL
+5. **Querying**: Frontend requests data via Django APIs
+6. **Response**: Data is queried, aggregated, and returned to UI
+
+## Security Architecture
+
+- **Team isolation**: All queries are scoped to `team_id`
+- **SQL injection protection**: Parameterized queries and HogQL parsing
+- **Authentication**: Session-based auth with CSRF protection
+- **Data encryption**: TLS in transit, encryption at rest for Cloud
+- **Access control**: Role-based permissions per team
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Monorepo Structure" icon="folder-tree" href="/architecture/monorepo-structure">
+    Learn how the codebase is organized
+  </Card>
+  <Card title="Product Architecture" icon="boxes" href="/architecture/products">
+    Understand the product pattern
+  </Card>
+  <Card title="Data Model" icon="database" href="/architecture/data-model">
+    Explore data structures and schemas
+  </Card>
+  <Card title="Development Setup" icon="code" href="/development/setup">
+    Set up your local environment
+  </Card>
+</CardGroup>

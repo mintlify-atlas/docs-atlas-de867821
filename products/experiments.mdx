@@ -1,0 +1,327 @@
+---
+title: Experiments
+description: Run A/B tests and multivariate experiments with statistical significance testing to optimize conversion and engagement
+---
+
+Experiments let you test changes scientifically. Compare variants with statistical rigor to know which version actually performs better, not which one you think performs better.
+
+## How experiments work
+
+An experiment is a feature flag plus measurement:
+
+1. Create a feature flag with multiple variants (control and test)
+2. Define metrics to measure (conversion, retention, revenue)
+3. PostHog assigns users to variants randomly
+4. Track metrics for each variant
+5. Calculate statistical significance to determine a winner
+
+<Note>
+Experiments use Bayesian statistics by default. Results show probability of each variant being best, not just p-values.
+</Note>
+
+## Creating an experiment
+
+<Steps>
+  <Step title="Define your hypothesis">
+    Start with a clear hypothesis:
+    
+    - "Changing the CTA button from 'Start' to 'Try for free' will increase signups by 10%"
+    - "Showing pricing upfront will improve trial-to-paid conversion"
+    - "Reducing onboarding steps will increase activation rate"
+  </Step>
+  
+  <Step title="Create the experiment">
+    1. Go to **Experiments** → **New experiment**
+    2. Name it (e.g., "CTA button copy test")
+    3. Create or link a feature flag
+    4. Define variants:
+       - Control: Current button text
+       - Test: New button text
+  </Step>
+  
+  <Step title="Set metrics">
+    Choose metrics to measure:
+    
+    **Primary metric:** The main goal (e.g., signup conversion)
+    
+    **Secondary metrics:** Watch for unintended effects:
+    - Time on page
+    - Bounce rate
+    - Support tickets
+  </Step>
+  
+  <Step title="Launch">
+    Set rollout percentage (typically 50/50 split) and launch. PostHog starts tracking results immediately.
+  </Step>
+</Steps>
+
+## Defining metrics
+
+Experiments support multiple metric types:
+
+<Tabs>
+  <Tab title="Conversion rate">
+    Percentage of users who complete an event:
+    
+    ```javascript
+    // Track the conversion event
+    posthog.capture('signup_completed', {
+      plan: 'pro',
+      source: 'experiment'
+    })
+    ```
+    
+    **Metric config:**
+    - Type: Conversion rate
+    - Event: `signup_completed`
+    - Conversion window: 7 days
+  </Tab>
+  
+  <Tab title="Trend count">
+    Number of times users perform an event:
+    
+    ```javascript
+    // Track repeated actions
+    posthog.capture('feature_used', {
+      feature: 'export',
+      variant: posthog.getFeatureFlag('export-button')
+    })
+    ```
+    
+    **Metric config:**
+    - Type: Trend
+    - Event: `feature_used`
+    - Aggregation: Total count or unique users
+  </Tab>
+  
+  <Tab title="Funnel conversion">
+    Multi-step conversion rate:
+    
+    **Metric config:**
+    - Type: Funnel
+    - Steps:
+      1. Viewed pricing page
+      2. Clicked signup
+      3. Completed signup
+      4. Activated account
+    - Conversion window: 14 days
+  </Tab>
+</Tabs>
+
+## Implementing variants
+
+Use feature flags to show different variants:
+
+```javascript
+// Get the experiment variant for this user
+const variant = posthog.getFeatureFlag('cta-button-test')
+
+if (variant === 'test') {
+  // Test variant: new copy
+  button.textContent = 'Try for free'
+} else {
+  // Control variant: original copy
+  button.textContent = 'Start'
+}
+
+// Track when users see the experiment
+posthog.capture('$experiment_started', {
+  experiment: 'cta-button-test',
+  variant: variant
+})
+
+// Track the conversion event
+button.addEventListener('click', () => {
+  posthog.capture('cta_clicked', {
+    button_text: button.textContent
+  })
+})
+```
+
+<Note>
+PostHog automatically tracks experiment exposure. You don't need to manually track `$experiment_started` unless you want custom timing.
+</Note>
+
+## Reading results
+
+Experiment results show statistical analysis:
+
+### Bayesian analysis (default)
+
+- **Probability of being best:** Chance this variant is the winner (e.g., 94%)
+- **Credible interval:** Range where the true effect likely lies
+- **Expected loss:** Potential downside if you pick the wrong variant
+
+**When to ship:**
+- Probability > 90% and expected loss is acceptable
+- Typically need 100+ conversions per variant for confidence
+
+### Frequentist analysis
+
+Switch to frequentist in settings for traditional hypothesis testing:
+
+- **P-value:** Probability results are due to chance (want < 0.05)
+- **Confidence interval:** Range of likely effect sizes
+- **Sample size recommendation:** How many more users needed
+
+**When to ship:**
+- P-value < 0.05 (95% confidence)
+- Effect size is practically significant (not just statistically)
+
+## Experiment duration
+
+How long to run experiments:
+
+<Accordion title="Wait for full cycles">
+  Run for at least one full cycle of user behavior. If users return weekly, run for 1-2 weeks minimum. This accounts for day-of-week effects.
+</Accordion>
+
+<Accordion title="Reach minimum sample size">
+  Need enough conversions for statistical power:
+  
+  - Small effects (2-5% lift): 5,000+ users per variant
+  - Medium effects (5-10% lift): 1,000+ users per variant  
+  - Large effects (10%+ lift): 500+ users per variant
+  
+  PostHog shows recommended sample size in the results.
+</Accordion>
+
+<Accordion title="Don't peek too early">
+  Looking at results daily and stopping when p < 0.05 inflates false positives. Decide duration beforehand or use Bayesian analysis which handles peeking better.
+</Accordion>
+
+## Multivariate experiments
+
+Test more than two variants:
+
+```javascript
+const variant = posthog.getFeatureFlag('pricing-test')
+
+switch (variant) {
+  case 'control':
+    showPricing([10, 20, 50])  // Current prices
+    break
+  case 'test-a':
+    showPricing([15, 25, 55])  // 50% higher
+    break
+  case 'test-b':
+    showPricing([12, 22, 52])  // 20% higher
+    break
+}
+```
+
+**Split traffic equally:**
+- Control: 33%
+- Test A: 33%
+- Test B: 33%
+
+<Note>
+More variants = longer test duration. Each variant needs enough traffic for statistical power.
+</Note>
+
+## Holdout groups
+
+Measure long-term impact with holdout groups:
+
+<Steps>
+  <Step title="Create a holdout">
+    1. After experiment wins, create a holdout group
+    2. Keep 5-10% of users on the control variant
+    3. Ship winning variant to everyone else
+  </Step>
+  
+  <Step title="Measure over time">
+    Track metrics for months to see if the effect persists or if novelty wore off.
+  </Step>
+  
+  <Step title="Sunset the holdout">
+    After confirming sustained impact, remove the holdout and ship to 100%.
+  </Step>
+</Steps>
+
+## Common workflows
+
+<CardGroup cols={2}>
+  <Card title="Optimize conversion" icon="arrow-trend-up">
+    Test changes to signup flow, pricing pages, or CTAs. Measure conversion rate as primary metric. Watch bounce rate as secondary.
+  </Card>
+  
+  <Card title="Improve retention" icon="rotate">
+    Test onboarding flows or feature changes. Use 7-day retention as primary metric. Monitor activation rate as secondary.
+  </Card>
+  
+  <Card title="Increase engagement" icon="chart-line">
+    Test UI changes or new features. Measure daily active usage or feature adoption as primary metric.
+  </Card>
+  
+  <Card title="Reduce churn" icon="user-shield">
+    Test interventions for at-risk users. Measure churn rate over 30 days. Track support tickets as secondary metric.
+  </Card>
+</CardGroup>
+
+## Sequential testing
+
+Run multiple experiments on the same flow:
+
+1. **Experiment 1:** Test headline copy (winner increases signups 8%)
+2. **Experiment 2:** Test form length on winning headline (winner increases 5%)
+3. **Experiment 3:** Test button color on winning form (no significant change)
+
+**Cumulative impact:** 8% × 5% = 13.4% total improvement
+
+<Note>
+Run experiments sequentially, not simultaneously, on the same user flow. Simultaneous experiments create interaction effects that skew results.
+</Note>
+
+## Statistical rigor
+
+<Accordion title="Avoid p-hacking">
+  Don't:
+  - Stop experiments early when results look good
+  - Run multiple experiments and only report winners
+  - Change metrics after seeing results
+  - Add more traffic just to reach p < 0.05
+  
+  Do:
+  - Decide duration and sample size before starting
+  - Report all experiments, even failures
+  - Define metrics beforehand
+  - Use Bayesian analysis if you need to peek
+</Accordion>
+
+<Accordion title="Understand statistical power">
+  Power = probability of detecting an effect if it exists. Need 80%+ power for reliable experiments.
+  
+  Increases with:
+  - Larger sample size
+  - Larger effect size
+  - Lower variance in metrics
+  
+  PostHog calculates required sample size for 80% power.
+</Accordion>
+
+<Accordion title="Check for novelty effects">
+  New features often see inflated engagement initially. Use holdout groups to measure if the effect persists beyond the first week.
+</Accordion>
+
+## Best practices
+
+<Accordion title="Start with high-impact changes">
+  Don't test button colors first. Test major changes like pricing structure, core flows, or key value props. Optimize details after you've optimized fundamentals.
+</Accordion>
+
+<Accordion title="Define success metrics upfront">
+  Write down your hypothesis, primary metric, and decision criteria before launching. Prevents moving goalposts when results arrive.
+</Accordion>
+
+<Accordion title="Monitor secondary metrics">
+  A test that increases signups but doubles support tickets isn't a real win. Always track potential negative side effects.
+</Accordion>
+
+<Accordion title="Ship learnings, not just winners">
+  Document why variants won or lost. Build institutional knowledge about what works for your users.
+</Accordion>
+
+<Accordion title="Combine with qualitative data">
+  Watch session replays of experiment participants. Numbers tell you what happened, replays show you why.
+</Accordion>

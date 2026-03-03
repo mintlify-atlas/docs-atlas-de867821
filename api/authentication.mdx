@@ -1,0 +1,198 @@
+---
+title: "Authentication"
+description: "Authenticate API requests with personal API keys"
+---
+
+PostHog uses personal API keys to authenticate API requests. API keys are tied to your user account and inherit your permissions.
+
+## Creating a personal API key
+
+<Steps>
+<Step title="Navigate to your account settings">
+  Go to your [PostHog account settings](https://us.posthog.com/settings/user) and select the **Personal API Keys** section.
+</Step>
+
+<Step title="Create a new key">
+  Click **Create personal API key** and give it a descriptive label (e.g., "Production automation", "CI/CD pipeline").
+</Step>
+
+<Step title="Copy your key">
+  Copy the generated key immediately. You won't be able to see it again.
+</Step>
+
+<Step title="Store securely">
+  Store the key in a secure location like a password manager or environment variable. Never commit it to version control.
+</Step>
+</Steps>
+
+<Warning>
+Personal API keys have the same permissions as your user account. Treat them like passwords and rotate them regularly.
+</Warning>
+
+## Using your API key
+
+Include your API key in the `Authorization` header using the Bearer token format:
+
+```
+Authorization: Bearer YOUR_API_KEY
+```
+
+### Example requests
+
+<CodeGroup>
+```bash cURL
+curl -X GET 'https://us.posthog.com/api/projects/' \
+  -H 'Authorization: Bearer phx_1234567890abcdef'
+```
+
+```python Python
+import requests
+import os
+
+API_KEY = os.environ.get('POSTHOG_API_KEY')
+BASE_URL = 'https://us.posthog.com/api'
+
+headers = {
+    'Authorization': f'Bearer {API_KEY}'
+}
+
+# List all projects
+response = requests.get(
+    f'{BASE_URL}/projects/',
+    headers=headers
+)
+
+if response.status_code == 200:
+    projects = response.json()
+    print(f"Found {projects['count']} projects")
+else:
+    print(f"Error: {response.status_code}")
+```
+
+```javascript JavaScript
+const POSTHOG_API_KEY = process.env.POSTHOG_API_KEY;
+const BASE_URL = 'https://us.posthog.com/api';
+
+const headers = {
+  'Authorization': `Bearer ${POSTHOG_API_KEY}`
+};
+
+// List all projects
+const response = await fetch(`${BASE_URL}/projects/`, { headers });
+
+if (response.ok) {
+  const projects = await response.json();
+  console.log(`Found ${projects.count} projects`);
+} else {
+  console.error(`Error: ${response.status}`);
+}
+```
+</CodeGroup>
+
+## Authentication for different endpoints
+
+Most API endpoints require authentication with a personal API key. However, some endpoints have different requirements:
+
+### Authenticated endpoints
+
+Require a personal API key in the `Authorization` header:
+
+- `/api/projects/` - Project management
+- `/api/insights/` - Insights and dashboards
+- `/api/feature_flags/` - Feature flags
+- `/api/persons/` - Person data
+- `/api/cohorts/` - Cohorts
+- `/api/query/` - HogQL queries
+
+### Public endpoints
+
+Do not require authentication:
+
+- `/decide/` - Feature flag evaluation (uses project token)
+- `/capture/` - Event ingestion (uses project token)
+- `/batch/` - Batch event ingestion (uses project token)
+
+<Info>
+Event ingestion endpoints use your project token instead of a personal API key. Find your project token in **Project Settings → Project Variables**.
+</Info>
+
+## Authentication errors
+
+### 401 Unauthorized
+
+Your API key is missing or invalid:
+
+```json
+{
+  "detail": "Authentication credentials were not provided."
+}
+```
+
+**Solution:** Verify your API key is correct and included in the `Authorization` header.
+
+### 403 Forbidden
+
+Your API key is valid but lacks permission:
+
+```json
+{
+  "detail": "You do not have permission to perform this action."
+}
+```
+
+**Solution:** Check that your user account has the required permissions for the resource.
+
+## Best practices
+
+<AccordionGroup>
+<Accordion title="Use environment variables">
+  Store API keys in environment variables, not in your code:
+
+  ```bash
+  export POSTHOG_API_KEY="phx_1234567890abcdef"
+  ```
+
+  Then reference them in your application:
+
+  ```python
+  import os
+  api_key = os.environ.get('POSTHOG_API_KEY')
+  ```
+</Accordion>
+
+<Accordion title="Create separate keys for different uses">
+  Use different API keys for:
+  - Development and testing
+  - Production automation
+  - CI/CD pipelines
+  - Third-party integrations
+
+  This makes it easier to rotate or revoke keys without affecting other systems.
+</Accordion>
+
+<Accordion title="Rotate keys regularly">
+  Create a new API key and delete the old one periodically (e.g., every 90 days) to minimize security risks.
+</Accordion>
+
+<Accordion title="Limit key exposure">
+  - Never commit keys to version control
+  - Don't share keys in Slack, email, or support tickets
+  - Use secret management tools in production (AWS Secrets Manager, HashiCorp Vault, etc.)
+  - Revoke keys immediately if they're exposed
+</Accordion>
+</AccordionGroup>
+
+## Revoking an API key
+
+If an API key is compromised or no longer needed:
+
+1. Go to [Personal API Keys](https://us.posthog.com/settings/user) in your account settings
+2. Find the key you want to revoke
+3. Click **Delete**
+4. Confirm the deletion
+
+The key will be immediately invalidated and all requests using it will return `401 Unauthorized`.
+
+<Warning>
+Deleting an API key is irreversible. Make sure no active integrations are using the key before deleting it.
+</Warning>

@@ -1,0 +1,246 @@
+---
+title: Web analytics
+description: Google Analytics-style metrics with privacy-friendly tracking, real-time visitors, and marketing attribution
+---
+
+Web analytics gives you a familiar Google Analytics-style dashboard while keeping your data private and under your control. Track pageviews, sessions, bounce rates, and referrers without sending data to third parties.
+
+## What you get
+
+Web analytics focuses on website metrics that marketing and growth teams need:
+
+- **Traffic metrics:** Pageviews, unique visitors, sessions, bounce rate
+- **Referrer tracking:** See where visitors come from (organic search, social, direct)
+- **Page performance:** Top pages, entry/exit pages, time on page
+- **Real-time visitors:** Live view of who's on your site right now
+- **Device breakdown:** Mobile vs desktop vs tablet traffic
+
+<Note>
+Web analytics uses the same PostHog snippet as product analytics. No additional installation required.
+</Note>
+
+## Dashboard overview
+
+The web analytics dashboard provides a high-level view of your site traffic:
+
+<Steps>
+  <Step title="Top-level metrics">
+    See total visitors, pageviews, session duration, and bounce rate at a glance. Compare to the previous period to spot trends.
+  </Step>
+  
+  <Step title="Traffic sources">
+    Break down where visitors arrive from: organic search, paid ads, social media, referrals, or direct traffic.
+  </Step>
+  
+  <Step title="Page analytics">
+    View your most visited pages, average time on each page, and bounce rates per page.
+  </Step>
+  
+  <Step title="Geographic data">
+    See which countries and cities your visitors come from, helpful for localization decisions.
+  </Step>
+</Steps>
+
+## Key features
+
+### Real-time visitors
+
+See who's on your site right now:
+
+1. Navigate to **Web analytics** → **Live**
+2. View active sessions in real-time
+3. See current page paths and session duration
+4. Filter by referrer source or device type
+
+Use this during product launches, marketing campaigns, or content releases to monitor immediate impact.
+
+### UTM parameter tracking
+
+Track marketing campaigns with UTM parameters:
+
+```html
+https://yoursite.com/landing?utm_source=twitter&utm_medium=social&utm_campaign=product_launch
+```
+
+PostHog automatically captures UTM parameters:
+
+- `utm_source`: Traffic source (google, twitter, newsletter)
+- `utm_medium`: Marketing medium (cpc, social, email)
+- `utm_campaign`: Campaign name (summer_sale, product_launch)
+- `utm_content`: Specific ad or link
+- `utm_term`: Paid search keywords
+
+<Tabs>
+  <Tab title="View UTM data">
+    Filter web analytics by UTM parameters to measure campaign performance:
+    
+    1. Open **Web analytics** → **Marketing**
+    2. See breakdown by source, medium, and campaign
+    3. Compare conversion rates across campaigns
+  </Tab>
+  
+  <Tab title="Create UTM links">
+    Build trackable URLs for your campaigns:
+    
+    ```
+    Base URL: https://yoursite.com/pricing
+    
+    Twitter campaign:
+    https://yoursite.com/pricing?utm_source=twitter&utm_medium=social&utm_campaign=spring_promo
+    
+    Email campaign:
+    https://yoursite.com/pricing?utm_source=newsletter&utm_medium=email&utm_campaign=spring_promo
+    ```
+  </Tab>
+</Tabs>
+
+### Web vitals
+
+Monitor page performance with Core Web Vitals:
+
+- **LCP (Largest Contentful Paint):** Loading performance
+- **FID (First Input Delay):** Interactivity
+- **CLS (Cumulative Layout Shift):** Visual stability
+
+Access web vitals at **Web analytics** → **Web vitals** to:
+
+- Identify slow-loading pages
+- Track performance over time
+- Compare vitals across devices
+- Find pages that need optimization
+
+<Note>
+Web vitals require modern browsers that support the Web Vitals API. Coverage is approximately 90% of users.
+</Note>
+
+### Path analysis
+
+Understand how visitors navigate your site:
+
+1. Go to **Web analytics** → **Page reports**
+2. Select a page to analyze
+3. View entry pages (where visitors came from)
+4. View exit pages (where they went next)
+5. See drop-off points in the user journey
+
+## Privacy and compliance
+
+Web analytics is built for privacy compliance:
+
+- **No cookies required:** Track sessions without cookie consent banners
+- **IP anonymization:** Optionally anonymize IP addresses
+- **GDPR friendly:** Full control over data storage and retention
+- **No third-party sharing:** All data stays in your infrastructure
+
+<Accordion title="Configure privacy settings">
+  Set privacy options in your PostHog snippet:
+  
+  ```javascript
+  posthog.init('<ph_project_api_key>', {
+    api_host: '<ph_instance_address>',
+    
+    // Disable session recording for web analytics only
+    disable_session_recording: true,
+    
+    // Anonymize IP addresses
+    ip: false,
+    
+    // Respect Do Not Track
+    respect_dnt: true
+  })
+  ```
+</Accordion>
+
+## Marketing analytics
+
+Connect web analytics to marketing attribution:
+
+<CardGroup cols={2}>
+  <Card title="Track campaign ROI" icon="dollar-sign">
+    Connect web analytics to conversion events. See which campaigns drive signups and revenue, not just traffic.
+  </Card>
+  
+  <Card title="Compare channel performance" icon="chart-bar">
+    Break down conversion rates by referrer source. Identify your highest-quality traffic channels.
+  </Card>
+  
+  <Card title="Optimize landing pages" icon="browser">
+    See bounce rates and session duration per landing page. Find underperforming pages that need work.
+  </Card>
+  
+  <Card title="Attribution analysis" icon="sitemap">
+    Use product analytics to build multi-touch attribution models with web analytics as the foundation.
+  </Card>
+</CardGroup>
+
+## Common use cases
+
+<Tabs>
+  <Tab title="Content marketing">
+    **Goal:** Measure blog performance
+    
+    1. Filter web analytics to `/blog/*` paths
+    2. Track top posts by pageviews
+    3. Monitor bounce rate per post
+    4. See referrer sources for each article
+    5. Track conversion from blog to signup
+  </Tab>
+  
+  <Tab title="Paid advertising">
+    **Goal:** Measure ad campaign effectiveness
+    
+    1. Add UTM parameters to all ad links
+    2. View **Marketing** dashboard for campaign breakdown
+    3. Compare cost per click (from ad platform) to conversion rate (from PostHog)
+    4. Calculate true cost per acquisition
+  </Tab>
+  
+  <Tab title="Product pages">
+    **Goal:** Optimize feature pages for conversion
+    
+    1. Track individual feature page views
+    2. Measure bounce rate per page
+    3. See navigation paths from features to pricing
+    4. Test page changes and compare conversion rates
+  </Tab>
+</Tabs>
+
+## Integration with product analytics
+
+Web analytics works seamlessly with product analytics:
+
+- Start with web analytics for visitor tracking
+- Add product analytics for post-signup behavior
+- Build complete funnel from first visit to power user
+- Use same installation, same data model, same interface
+
+## Migration from Google Analytics
+
+Switching from GA is straightforward:
+
+1. **Install PostHog:** Add snippet alongside GA initially
+2. **Compare data:** Run both tools in parallel for 1-2 weeks
+3. **Rebuild dashboards:** Recreate your key GA reports in PostHog
+4. **Remove GA:** Drop GA once you're confident in PostHog data
+
+<Note>
+PostHog counts sessions differently than GA4. Expect slight variations in session metrics during comparison.
+</Note>
+
+## Best practices
+
+<Accordion title="Use UTM parameters consistently">
+  Create a UTM naming convention and stick to it. Use lowercase, underscores instead of spaces, and descriptive campaign names.
+</Accordion>
+
+<Accordion title="Set up goal tracking">
+  Don't just track visits. Define conversion goals (signups, purchases, downloads) and measure them alongside traffic metrics.
+</Accordion>
+
+<Accordion title="Monitor performance regularly">
+  Check web vitals weekly. Page speed directly impacts conversion rates and SEO rankings.
+</Accordion>
+
+<Accordion title="Segment by device type">
+  Mobile users behave differently than desktop. Always check if metrics vary significantly by device.
+</Accordion>

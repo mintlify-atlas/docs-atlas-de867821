@@ -1,0 +1,438 @@
+---
+title: Surveys
+description: Collect user feedback with in-app surveys, NPS, CSAT, and PMF surveys with customizable templates and targeting
+---
+
+Surveys let you ask users questions directly in your product. Collect qualitative feedback, measure satisfaction with NPS/CSAT, and understand user needs without leaving PostHog.
+
+## How surveys work
+
+Surveys appear as popovers while users are in your product:
+
+1. Define survey questions and appearance
+2. Target specific users or pages
+3. Survey appears as an overlay in your app
+4. Responses are collected in PostHog
+5. Analyze results and identify themes
+
+<Note>
+Surveys use the same PostHog snippet as analytics. No additional installation required.
+</Note>
+
+## Survey types
+
+Choose the right survey type for your use case:
+
+<Tabs>
+  <Tab title="Popover (default)">
+    Small overlay that appears on your page:
+    
+    - Most common for in-app surveys
+    - Minimal disruption to user experience
+    - Dismissible by users
+    - Can position in corner or center
+    
+    **Best for:** Quick 1-3 question surveys, NPS, CSAT, feature feedback
+  </Tab>
+  
+  <Tab title="Widget">
+    Appears via CSS selector or embedded button:
+    
+    ```html
+    <!-- Button triggers survey -->
+    <button data-survey-id="your-survey-id">
+      Give feedback
+    </button>
+    ```
+    
+    **Best for:** Opt-in feedback, contact forms, feature requests
+  </Tab>
+  
+  <Tab title="API">
+    Headless survey for custom implementations:
+    
+    ```javascript
+    // Get survey config
+    const survey = posthog.getActiveMatchingSurveys()[0]
+    
+    // Show your custom UI
+    showCustomSurveyUI(survey)
+    
+    // Submit response
+    posthog.capture('survey sent', {
+      $survey_id: survey.id,
+      $survey_response: userAnswer
+    })
+    ```
+    
+    **Best for:** Custom UI, mobile apps, unique workflows
+  </Tab>
+</Tabs>
+
+## Question types
+
+<Steps>
+  <Step title="Open-ended">
+    Free-form text input for qualitative feedback:
+    
+    ```
+    Question: "What's the main reason you signed up?"
+    Answer: [Text input box]
+    ```
+    
+    Use for: Understanding motivations, collecting feature requests, bug reports
+  </Step>
+  
+  <Step title="Single choice">
+    Select one option from a list:
+    
+    ```
+    Question: "How easy was it to get started?"
+    Options:
+    - Very easy
+    - Somewhat easy  
+    - Neutral
+    - Somewhat difficult
+    - Very difficult
+    ```
+    
+    Use for: Satisfaction levels, yes/no questions, categorical feedback
+  </Step>
+  
+  <Step title="Multiple choice">
+    Select multiple options:
+    
+    ```
+    Question: "Which features are most important to you?"
+    Options:
+    ☐ Session replay
+    ☐ Feature flags
+    ☐ Experiments
+    ☐ Analytics
+    ```
+    
+    Use for: Feature prioritization, use case discovery, preference mapping
+  </Step>
+  
+  <Step title="Rating scale">
+    Numeric or emoji rating:
+    
+    ```
+    Question: "How likely are you to recommend us?"
+    Scale: 0 [===|====] 10
+    
+    Or emoji: 😞 😐 😊 😍
+    ```
+    
+    Use for: NPS, CSAT, feature satisfaction, sentiment
+  </Step>
+  
+  <Step title="Link">
+    Display a link with call-to-action:
+    
+    ```
+    Message: "Want to learn more about this feature?"
+    Button: "Read the guide →"
+    Link: https://docs.yoursite.com/feature-guide
+    ```
+    
+    Use for: Documentation links, booking demos, community invites
+  </Step>
+</Steps>
+
+## Creating a survey
+
+<Steps>
+  <Step title="Choose a template or start blank">
+    PostHog provides templates for common surveys:
+    
+    - **NPS:** Net Promoter Score (0-10 scale)
+    - **CSAT:** Customer Satisfaction (1-5 scale)
+    - **PMF:** Product-Market Fit ("How would you feel if you could no longer use...")
+    - **Feedback:** Open-ended feedback request
+  </Step>
+  
+  <Step title="Configure questions">
+    Add 1-3 questions maximum for best completion rates:
+    
+    ```javascript
+    // Example: NPS with follow-up
+    [
+      {
+        type: 'rating',
+        question: 'How likely are you to recommend us?',
+        scale: 10,
+        display: 'number',
+        lowerBoundLabel: 'Not likely',
+        upperBoundLabel: 'Very likely'
+      },
+      {
+        type: 'open',
+        question: 'What could we improve?',
+        optional: true  // Make follow-ups optional
+      }
+    ]
+    ```
+  </Step>
+  
+  <Step title="Set targeting">
+    Control who sees the survey and when:
+    
+    - **URL targeting:** Show on specific pages
+    - **User properties:** Target by plan, signup date, etc.
+    - **Feature flags:** Link to a feature flag
+    - **Wait period:** Don't re-survey users too quickly
+  </Step>
+  
+  <Step title="Customize appearance">
+    Match your brand:
+    
+    - Background color
+    - Button color and text
+    - Position (top/bottom, left/right)
+    - Custom CSS for advanced styling
+  </Step>
+</Steps>
+
+## Targeting options
+
+Show surveys to the right users at the right time:
+
+<Accordion title="URL targeting">
+  Show surveys on specific pages:
+  
+  ```javascript
+  // Show on pricing page
+  url: '/pricing'
+  urlMatchType: 'icontains'  // Contains, case-insensitive
+  
+  // Show on all blog posts
+  url: '/blog/'
+  urlMatchType: 'icontains'
+  
+  // Don't show on checkout
+  url: '/checkout'
+  urlMatchType: 'is_not'
+  ```
+</Accordion>
+
+<Accordion title="User property targeting">
+  Target by user attributes:
+  
+  ```javascript
+  // Identify users with properties
+  posthog.identify('user_123', {
+    plan: 'pro',
+    signup_date: '2024-01-15',
+    has_team: true
+  })
+  ```
+  
+  Then target survey to users where:
+  - `plan = 'pro'`
+  - `signup_date < 30 days ago`
+  - `has_team = true`
+</Accordion>
+
+<Accordion title="Wait periods">
+  Avoid survey fatigue:
+  
+  - **Seen any survey:** Wait 30 days after user sees any survey
+  - **Completed this survey:** Don't re-ask the same survey
+  - **Session frequency:** Only show once per session
+</Accordion>
+
+<Accordion title="Feature flag targeting">
+  Link to a feature flag:
+  
+  ```javascript
+  // Link survey to feature flag ID
+  linked_flag_id: 123
+  
+  // Only show to specific variant
+  conditions: {
+    linkedFlagVariant: 'test'
+  }
+  ```
+  
+  Survey appears only to users who see the feature flag.
+</Accordion>
+
+## Common survey patterns
+
+<CardGroup cols={2}>
+  <Card title="NPS survey" icon="chart-line">
+    **Question 1:** "How likely are you to recommend us?" (0-10 rating)
+    
+    **Question 2:** "What's the main reason for your score?" (open text, optional)
+    
+    **Targeting:** All users 30+ days after signup
+  </Card>
+  
+  <Card title="CSAT survey" icon="star">
+    **Question 1:** "How satisfied are you with [feature]?" (1-5 rating or emoji)
+    
+    **Targeting:** Users on specific page, 10 seconds after page load
+  </Card>
+  
+  <Card title="PMF survey" icon="bullseye">
+    **Question:** "How would you feel if you could no longer use [product]?"
+    
+    **Options:**
+    - Very disappointed
+    - Somewhat disappointed  
+    - Not disappointed
+    
+    **Targeting:** Active users (used product 3+ times)
+  </Card>
+  
+  <Card title="Feature feedback" icon="comment">
+    **Question 1:** "Did this feature solve your problem?" (Yes/No)
+    
+    **Question 2:** "What would make it better?" (open text)
+    
+    **Targeting:** Users who used the feature, via feature flag
+  </Card>
+</CardGroup>
+
+## Analyzing responses
+
+View and analyze survey results:
+
+<Tabs>
+  <Tab title="Response overview">
+    See aggregate results:
+    
+    - Total responses and response rate
+    - Average rating (for rating questions)
+    - Response distribution (for choice questions)
+    - Responses over time chart
+  </Tab>
+  
+  <Tab title="Individual responses">
+    Read each response with user context:
+    
+    - User properties (plan, email, signup date)
+    - Response timestamp
+    - Full survey answers
+    - Link to user profile and session replays
+  </Tab>
+  
+  <Tab title="Export data">
+    Export for deeper analysis:
+    
+    ```javascript
+    // Export via API
+    const responses = await posthog.api.get(
+      `/api/projects/${projectId}/surveys/${surveyId}/responses`
+    )
+    
+    // Or download CSV from UI
+    ```
+  </Tab>
+</Tabs>
+
+## NPS scoring
+
+PostHog automatically calculates NPS:
+
+- **Promoters (9-10):** Loyal enthusiasts
+- **Passives (7-8):** Satisfied but unenthusiastic
+- **Detractors (0-6):** Unhappy customers
+
+**NPS Score = % Promoters - % Detractors**
+
+Example: 60% promoters, 30% passives, 10% detractors = NPS of 50
+
+<Note>
+Good NPS varies by industry. SaaS typically sees 30-40. Above 50 is excellent.
+</Note>
+
+## Survey best practices
+
+<Accordion title="Keep surveys short (1-3 questions max)">
+  Users are trying to use your product, not take a survey. One focused question gets better completion than five scattered questions.
+</Accordion>
+
+<Accordion title="Make follow-ups optional">
+  First question required, rest optional. You'll get more responses and those who answer follow-ups are more engaged.
+</Accordion>
+
+<Accordion title="Time surveys appropriately">
+  - **After activation:** Wait until users experience core value
+  - **After feature use:** Ask about specific features right after use
+  - **Before churn:** Survey users showing churn signals
+  
+  Don't survey on first visit or during checkout.
+</Accordion>
+
+<Accordion title="Combine with session replay">
+  Watch replays of users who gave negative feedback. See what frustrated them before they answered.
+</Accordion>
+
+<Accordion title="Close the loop">
+  Respond to user feedback, especially detractors. Show users you're listening and taking action.
+</Accordion>
+
+<Accordion title="Test survey appearance">
+  Preview surveys before launching. Check mobile responsiveness, color contrast, and positioning.
+</Accordion>
+
+## Integration with analytics
+
+Connect surveys to product data:
+
+- Filter insights by survey response (e.g., behavior of promoters vs detractors)
+- Create cohorts from survey responses
+- Track survey completion rate as a metric
+- Correlate NPS scores with feature usage
+
+```javascript
+// Create cohort of promoters (NPS 9-10)
+const promoters = {
+  name: 'NPS Promoters',
+  filters: {
+    properties: [{
+      key: '$survey_response',
+      value: [9, 10],
+      operator: 'in'
+    }]
+  }
+}
+
+// Compare promoter behavior to detractors in analytics
+```
+
+## Advanced: Programmatic surveys
+
+Show surveys programmatically:
+
+```javascript
+// Get available surveys for this user
+const surveys = posthog.getActiveMatchingSurveys()
+
+// Show specific survey
+const targetSurvey = surveys.find(s => s.name === 'Onboarding feedback')
+if (targetSurvey) {
+  // Trigger survey display
+  posthog.capture('survey shown', {
+    $survey_id: targetSurvey.id
+  })
+}
+
+// Or dismiss programmatically
+posthog.capture('survey dismissed', {
+  $survey_id: targetSurvey.id
+})
+```
+
+## Survey templates
+
+PostHog provides pre-built templates:
+
+- **NPS:** Net Promoter Score with follow-up
+- **PMF:** Product-Market Fit assessment
+- **CSAT:** Customer Satisfaction rating
+- **Feature feedback:** Gather thoughts on specific features
+- **Churn prevention:** Understand why users might leave
+- **Onboarding:** Check if setup was smooth

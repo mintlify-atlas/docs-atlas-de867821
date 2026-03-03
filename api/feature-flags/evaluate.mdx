@@ -1,0 +1,364 @@
+---
+title: Evaluate Feature Flags
+description: Evaluate feature flags for a user via the /decide endpoint
+---
+
+## POST /decide
+
+The `/decide` endpoint is the primary way SDKs and clients evaluate feature flags. It returns which flags are enabled for a given user or group, along with their values and optional payloads.
+
+<Note>
+  This endpoint is designed for SDK use. For server-side evaluation, consider using the [Local Evaluation](/products/feature-flags#local-evaluation) endpoint at `/api/feature_flag/local_evaluation` instead.
+</Note>
+
+### Request Body
+
+<ParamField body="api_key" type="string" required>
+  Your project API key (public token)
+</ParamField>
+
+<ParamField body="distinct_id" type="string" required>
+  Unique identifier for the user/person
+</ParamField>
+
+<ParamField body="person_properties" type="object">
+  Person properties to use for flag evaluation
+</ParamField>
+
+<ParamField body="groups" type="object">
+  Group identifiers for group-based flags. Keys are group type names, values are group keys.
+  
+  ```json
+  {
+    "company": "acme-inc",
+    "organization": "org-123"
+  }
+  ```
+</ParamField>
+
+<ParamField body="group_properties" type="object">
+  Properties for each group type
+  
+  ```json
+  {
+    "company": {
+      "plan": "enterprise",
+      "seats": 50
+    }
+  }
+  ```
+</ParamField>
+
+<ParamField body="$anon_distinct_id" type="string">
+  Anonymous ID before user identification (for experience continuity)
+</ParamField>
+
+<ParamField body="geoip_disable" type="boolean" default="false">
+  Disable GeoIP lookup for this request
+</ParamField>
+
+### Response
+
+<ResponseField name="featureFlags" type="object">
+  Object mapping flag keys to their evaluated values. Boolean flags return `true`/`false`, multivariate flags return the variant key.
+  
+  ```json
+  {
+    "new-dashboard": true,
+    "checkout-variant": "test",
+    "beta-feature": false
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="featureFlagPayloads" type="object">
+  Object mapping flag keys to their JSON payloads (if configured)
+  
+  ```json
+  {
+    "checkout-variant": {"button_color": "green"}
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="errorsWhileComputingFlags" type="boolean">
+  Whether any errors occurred during flag evaluation
+</ResponseField>
+
+## Examples
+
+### Basic Flag Evaluation
+
+<CodeGroup>
+```bash cURL
+curl -X POST https://app.posthog.com/decide \
+  -H "Content-Type: application/json" \
+  -d '{
+    "api_key": "phc_your_project_api_key",
+    "distinct_id": "user_123"
+  }'
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    "https://app.posthog.com/decide",
+    json={
+        "api_key": "phc_your_project_api_key",
+        "distinct_id": "user_123"
+    }
+)
+
+flags = response.json()["featureFlags"]
+print(flags)  # {"new-dashboard": true, "beta-feature": false}
+```
+
+```javascript JavaScript
+fetch('https://app.posthog.com/decide', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    api_key: 'phc_your_project_api_key',
+    distinct_id: 'user_123'
+  })
+})
+  .then(res => res.json())
+  .then(data => {
+    console.log(data.featureFlags);
+  });
+```
+</CodeGroup>
+
+### With Person Properties
+
+<CodeGroup>
+```bash cURL
+curl -X POST https://app.posthog.com/decide \
+  -H "Content-Type: application/json" \
+  -d '{
+    "api_key": "phc_your_project_api_key",
+    "distinct_id": "user_123",
+    "person_properties": {
+      "email": "user@company.com",
+      "plan": "premium",
+      "signup_date": "2024-01-15"
+    }
+  }'
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    "https://app.posthog.com/decide",
+    json={
+        "api_key": "phc_your_project_api_key",
+        "distinct_id": "user_123",
+        "person_properties": {
+            "email": "user@company.com",
+            "plan": "premium",
+            "signup_date": "2024-01-15"
+        }
+    }
+)
+```
+</CodeGroup>
+
+### With Group Properties
+
+<CodeGroup>
+```bash cURL
+curl -X POST https://app.posthog.com/decide \
+  -H "Content-Type: application/json" \
+  -d '{
+    "api_key": "phc_your_project_api_key",
+    "distinct_id": "user_123",
+    "groups": {
+      "company": "acme-inc"
+    },
+    "group_properties": {
+      "company": {
+        "plan": "enterprise",
+        "seats": 50,
+        "industry": "technology"
+      }
+    }
+  }'
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    "https://app.posthog.com/decide",
+    json={
+        "api_key": "phc_your_project_api_key",
+        "distinct_id": "user_123",
+        "groups": {
+            "company": "acme-inc"
+        },
+        "group_properties": {
+            "company": {
+                "plan": "enterprise",
+                "seats": 50,
+                "industry": "technology"
+            }
+        }
+    }
+)
+```
+</CodeGroup>
+
+### With Anonymous ID for Experience Continuity
+
+<CodeGroup>
+```bash cURL
+curl -X POST https://app.posthog.com/decide \
+  -H "Content-Type: application/json" \
+  -d '{
+    "api_key": "phc_your_project_api_key",
+    "distinct_id": "user_123",
+    "$anon_distinct_id": "anon_456"
+  }'
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    "https://app.posthog.com/decide",
+    json={
+        "api_key": "phc_your_project_api_key",
+        "distinct_id": "user_123",
+        "$anon_distinct_id": "anon_456"  # Previous anonymous ID
+    }
+)
+```
+</CodeGroup>
+
+## Response Examples
+
+### Boolean Flags
+
+```json
+{
+  "featureFlags": {
+    "new-dashboard": true,
+    "beta-feature": false,
+    "dark-mode": true
+  },
+  "errorsWhileComputingFlags": false
+}
+```
+
+### Multivariate Flags with Payloads
+
+```json
+{
+  "featureFlags": {
+    "checkout-flow": "test",
+    "button-color": "green",
+    "pricing-page": "variant-b"
+  },
+  "featureFlagPayloads": {
+    "checkout-flow": {
+      "steps": 3,
+      "show_trust_badges": true
+    },
+    "button-color": {
+      "hex": "#00FF00"
+    },
+    "pricing-page": {
+      "layout": "comparison",
+      "highlight_plan": "pro"
+    }
+  },
+  "errorsWhileComputingFlags": false
+}
+```
+
+### With Errors
+
+```json
+{
+  "featureFlags": {
+    "new-dashboard": true
+  },
+  "errorsWhileComputingFlags": true
+}
+```
+
+<Note>
+  **Best Practices:**
+  
+  - The `/decide` endpoint performs person and group lookups, which can be slower than local evaluation
+  - For high-traffic server-side applications, use the [Local Evaluation](/products/feature-flags#local-evaluation) endpoint instead
+  - Cache flag results on the client side when possible
+  - SDKs automatically handle caching and polling for you
+  - Include relevant properties to ensure accurate flag evaluation
+  - Use anonymous IDs for experience continuity when users aren't yet identified
+</Note>
+
+## SDKs
+
+Most PostHog SDKs use the `/decide` endpoint under the hood. Here's how to use feature flags in various SDKs:
+
+<CodeGroup>
+```javascript JavaScript
+// PostHog automatically calls /decide
+if (posthog.isFeatureEnabled('new-dashboard')) {
+  // Show new dashboard
+}
+
+// Get variant value
+const variant = posthog.getFeatureFlag('checkout-flow');
+
+// Get payload
+const payload = posthog.getFeatureFlagPayload('checkout-flow');
+```
+
+```python Python
+from posthog import Posthog
+
+posthog = Posthog('phc_your_project_api_key')
+
+# Boolean flag
+if posthog.feature_enabled('new-dashboard', 'user_123'):
+    # Show new dashboard
+    pass
+
+# Multivariate flag
+variant = posthog.get_feature_flag('checkout-flow', 'user_123')
+
+# With properties
+if posthog.feature_enabled(
+    'beta-feature',
+    'user_123',
+    person_properties={'plan': 'premium'}
+):
+    pass
+```
+
+```php PHP
+use PostHog\PostHog;
+
+PostHog::init('phc_your_project_api_key');
+
+// Boolean flag
+if (PostHog::isFeatureEnabled('new-dashboard', 'user_123')) {
+    // Show new dashboard
+}
+
+// Multivariate flag
+$variant = PostHog::getFeatureFlag('checkout-flow', 'user_123');
+```
+</CodeGroup>
+
+## Related Endpoints
+
+- [Local Evaluation](/api/products/feature-flags#local-evaluation) - For server-side flag evaluation without person lookups
+- [Create Feature Flag](/api/feature-flags/create) - Create new feature flags
+- [List Feature Flags](/api/feature-flags/list) - List all feature flags

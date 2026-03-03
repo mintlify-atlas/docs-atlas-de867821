@@ -1,0 +1,202 @@
+---
+title: Product analytics
+description: Track user behavior with autocapture, custom events, and powerful insights to understand how people use your product
+---
+
+Product analytics captures everything users do in your product and turns that data into actionable insights. With PostHog, you get automatic event tracking (autocapture), custom events, and multiple visualization types to analyze user behavior.
+
+## How it works
+
+Product analytics starts with event collection. PostHog captures user interactions automatically and lets you define custom events for specific business metrics.
+
+### Autocapture
+
+Autocapture tracks user interactions without manual instrumentation. Install the PostHog snippet and it automatically collects:
+
+- Page views and navigation
+- Button and link clicks
+- Form submissions and inputs
+- Custom data attributes
+
+<Note>
+Autocapture works on web applications out of the box. For mobile apps, you'll need to instrument events manually using the SDK.
+</Note>
+
+### Custom events
+
+Track specific business events with custom instrumentation:
+
+```javascript
+// Track a custom event
+posthog.capture('user_signed_up', {
+  plan: 'pro',
+  source: 'pricing_page',
+  monthly_value: 99
+})
+
+// Track with user properties
+posthog.capture('checkout_completed', {
+  revenue: 149.99,
+  items: 3,
+  payment_method: 'card'
+})
+```
+
+## Insight types
+
+Product analytics offers six visualization types to analyze your data from different angles.
+
+<Steps>
+  <Step title="Trends">
+    Track metrics over time. See how events, user actions, or properties change across days, weeks, or months.
+    
+    **Use cases:** Daily active users, feature adoption rates, conversion metrics
+  </Step>
+  
+  <Step title="Funnels">
+    Analyze conversion through multi-step processes. Identify where users drop off in signup flows, checkout processes, or onboarding sequences.
+    
+    **Use cases:** Signup conversion, checkout abandonment, feature adoption funnels
+  </Step>
+  
+  <Step title="Retention">
+    Measure how many users return after their first visit. Understand which features drive long-term engagement.
+    
+    **Use cases:** Weekly retention cohorts, feature stickiness, churn analysis
+  </Step>
+  
+  <Step title="User paths">
+    Visualize the actual routes users take through your product. Discover unexpected navigation patterns.
+    
+    **Use cases:** Navigation analysis, feature discovery patterns, exit paths
+  </Step>
+  
+  <Step title="Stickiness">
+    See how frequently users perform actions. Identify your power users and engagement patterns.
+    
+    **Use cases:** Feature engagement frequency, power user identification, habit formation
+  </Step>
+  
+  <Step title="Lifecycle">
+    Track users across new, returning, resurrecting, and dormant states to understand user health.
+    
+    **Use cases:** User health monitoring, reactivation opportunities, growth composition
+  </Step>
+</Steps>
+
+## Creating insights
+
+Build insights from the insights page or directly from the new menu:
+
+<Tabs>
+  <Tab title="From dashboard">
+    1. Navigate to **Product analytics** in the sidebar
+    2. Click **New insight**
+    3. Select your insight type (Trends, Funnels, etc.)
+    4. Configure events, filters, and breakdowns
+    5. Save to a dashboard
+  </Tab>
+  
+  <Tab title="With SQL">
+    For advanced analysis, use HogQL to write custom queries:
+    
+    ```sql
+    SELECT 
+      toStartOfDay(timestamp) as day,
+      count() as events,
+      count(DISTINCT person_id) as users
+    FROM events
+    WHERE event = 'purchase_completed'
+      AND timestamp > now() - INTERVAL 30 DAY
+    GROUP BY day
+    ORDER BY day
+    ```
+  </Tab>
+</Tabs>
+
+## Event definitions
+
+Manage your event schema from the event definitions page:
+
+- **Verify events:** Mark events as verified to indicate they're correctly tracked
+- **Add descriptions:** Document what each event represents
+- **Set tags:** Organize events by feature area or team
+- **View volume:** See how frequently events fire
+
+<Note>
+Event definitions are shared across your team. Changes apply to everyone in the project.
+</Note>
+
+## Filtering and breakdowns
+
+Refine insights with filters and breakdowns:
+
+### Property filters
+
+Filter events based on properties:
+
+```javascript
+// Events automatically include properties you can filter on
+posthog.capture('button_clicked', {
+  button_name: 'Sign up',
+  page: '/pricing',
+  user_plan: 'free'
+})
+```
+
+In the UI, filter to show only events where `user_plan = 'free'` or `page contains '/pricing'`.
+
+### Breakdowns
+
+Break down metrics by property values to compare segments:
+
+- Break down conversion by traffic source
+- Compare retention across user plans
+- Analyze feature usage by device type
+
+## Common workflows
+
+<CardGroup cols={2}>
+  <Card title="Track feature adoption" icon="chart-line">
+    Create a Trends insight showing the event for your new feature over time. Break down by user plan to see which segments adopt fastest.
+  </Card>
+  
+  <Card title="Analyze signup conversion" icon="funnel">
+    Build a Funnel from landing page view → signup click → account created → first action. Identify the biggest drop-off point.
+  </Card>
+  
+  <Card title="Measure retention" icon="rotate">
+    Create a Retention insight with your activation event. See what percentage of users return each week after first use.
+  </Card>
+  
+  <Card title="Find power users" icon="star">
+    Use Stickiness to see how many days per week users perform key actions. Users in the 5-7 day range are your power users.
+  </Card>
+</CardGroup>
+
+## Integration with other products
+
+Product analytics connects with PostHog's other tools:
+
+- **Session replay:** Click any data point to watch actual user sessions
+- **Feature flags:** Create flags based on user properties or behaviors
+- **Experiments:** Use insights as experiment metrics
+- **Surveys:** Target surveys based on user actions
+
+## Best practices
+
+<Accordion title="Start with autocapture, add custom events later">
+  Let autocapture handle basic interactions while you focus on tracking business-specific events. Add custom events for conversion actions, revenue events, and key features.
+</Accordion>
+
+<Accordion title="Use consistent naming conventions">
+  Adopt a naming pattern like `object_action` (e.g., `project_created`, `file_uploaded`) to keep events organized as you scale.
+</Accordion>
+
+<Accordion title="Add rich properties to events">
+  Include context like plan tier, feature area, or dollar amounts. This makes filtering and analysis more powerful without creating dozens of events.
+</Accordion>
+
+<Accordion title="Create dashboards for different stakeholders">
+  Build focused dashboards for product, growth, and leadership teams. Each team cares about different metrics.
+</Accordion>

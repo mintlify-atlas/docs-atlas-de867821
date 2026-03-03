@@ -1,0 +1,543 @@
+---
+title: Testing
+description: PostHog's testing strategy and how to run tests
+---
+
+PostHog uses a comprehensive testing strategy combining Python pytest, JavaScript Jest, and end-to-end Playwright tests.
+
+## Test Types
+
+<CardGroup cols={3}>
+  <Card title="Backend Tests" icon="python">
+    pytest for Django and business logic
+  </Card>
+  <Card title="Frontend Tests" icon="react">
+    Jest for React components and Kea logic
+  </Card>
+  <Card title="E2E Tests" icon="browser">
+    Playwright for full user flows
+  </Card>
+</CardGroup>
+
+## Backend Testing (pytest)
+
+### Running Tests
+
+<CodeGroup>
+```bash All tests
+# Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=posthog --cov-report=html
+```
+
+```bash Specific tests
+# Run single test file
+pytest posthog/api/test/test_feature_flag.py
+
+# Run specific test class
+pytest posthog/api/test/test_feature_flag.py::TestFeatureFlag
+
+# Run specific test method
+pytest posthog/api/test/test_feature_flag.py::TestFeatureFlag::test_create_feature_flag
+```
+
+```bash Product tests
+# Run tests for specific product (Turbo)
+pnpm turbo run backend:test --filter=@posthog/products-feature_flags
+
+# Run all product tests
+pnpm turbo run backend:test
+
+# Dry run to see what would execute
+pnpm turbo run backend:test --dry-run=json
+```
+</CodeGroup>
+
+### Test Configuration
+
+Tests are configured in `pytest.ini`:
+
+```ini
+[pytest]
+pythonpath = . common
+env =
+    DEBUG=1
+    TEST=1
+DJANGO_SETTINGS_MODULE = posthog.settings
+addopts = -p no:warnings --reuse-db --ignore=posthog/user_scripts
+
+markers =
+    ee
+    clickhouse_only
+    skip_on_multitenancy
+    async_migrations
+    requires_secrets
+
+asyncio_mode = auto
+```
+
+**Key options:**
+- `--reuse-db`: Reuse database between test runs (faster)
+- `-p no:warnings`: Suppress warnings
+- `--ignore`: Skip certain directories
+
+### Writing Backend Tests
+
+<Steps>
+  <Step title="Test Structure">
+    Organize tests in `tests/` directories within products:
+    
+    ```
+    products/feature_flags/
+      backend/
+        tests/
+          test_models.py
+          test_logic.py
+          test_api.py
+          test_tasks.py
+          conftest.py
+    ```
+  </Step>
+
+  <Step title="Basic Test Example">
+    ```python
+    # products/feature_flags/backend/tests/test_logic.py
+    import pytest
+    from products.feature_flags.backend import logic
+    from products.feature_flags.backend.models import FeatureFlag
+    
+    class TestFeatureFlagLogic:
+        def test_create_feature_flag(self, team):
+            """Test creating a feature flag."""
+            flag = logic.create_feature_flag(
+                team_id=team.id,
+                key="test-flag",
+                enabled=True,
+            )
+            
+            assert flag.key == "test-flag"
+            assert flag.enabled is True
+            assert flag.team_id == team.id
+        
+        def test_duplicate_key_raises_error(self, team):
+            """Test that duplicate keys are rejected."""
+            logic.create_feature_flag(team_id=team.id, key="test-flag", enabled=True)
+            
+            with pytest.raises(ValueError, match="already exists"):
+                logic.create_feature_flag(team_id=team.id, key="test-flag", enabled=False)
+    ```
+  </Step>
+
+  <Step title="Using Fixtures">
+    ```python
+    # products/feature_flags/backend/tests/conftest.py
+    import pytest
+    from posthog.models import Team, Organization
+    
+    @pytest.fixture
+    def organization():
+        """Create test organization."""
+        return Organization.objects.create(name="Test Org")
+    
+    @pytest.fixture
+    def team(organization):
+        """Create test team."""
+        return Team.objects.create(
+            organization=organization,
+            name="Test Team",
+        )
+    
+    @pytest.fixture
+    def feature_flag(team):
+        """Create test feature flag."""
+        from products.feature_flags.backend.models import FeatureFlag
+        return FeatureFlag.objects.create(
+            team=team,
+            key="test-flag",
+            enabled=True,
+        )
+    ```
+  </Step>
+</Steps>
+
+### Parameterized Tests
+
+Use `@pytest.mark.parametrize` for testing multiple inputs:
+
+```python
+import pytest
+
+class TestFeatureFlagEvaluation:
+    @pytest.mark.parametrize(
+        "flag_value,user_property,expected",
+        [
+            ("true", {"email": "test@posthog.com"}, True),
+            ("false", {"email": "test@posthog.com"}, False),
+            ("variant-a", {"plan": "enterprise"}, "variant-a"),
+            ("variant-b", {"plan": "free"}, "variant-b"),
+        ],
+    )
+    def test_flag_evaluation(
+        self,
+        team,
+        flag_value,
+        user_property,
+        expected,
+    ):
+        """Test flag evaluation with different conditions."""
+        result = evaluate_flag(team.id, flag_value, user_property)
+        assert result == expected
+```
+
+<Info>
+**Prefer parameterized tests** over multiple assertions in a single test. This makes test failures clearer and exercises the system more thoroughly.
+</Info>
+
+### API Tests
+
+Test Django REST Framework views:
+
+```python
+from rest_framework.test import APIClient
+import pytest
+
+class TestFeatureFlagAPI:
+    @pytest.fixture
+    def api_client(self):
+        return APIClient()
+    
+    def test_create_feature_flag_via_api(self, api_client, team, user):
+        """Test creating feature flag via API."""
+        api_client.force_authenticate(user=user)
+        
+        response = api_client.post(
+            f"/api/projects/{team.id}/feature_flags/",
+            {
+                "key": "new-flag",
+                "name": "New Flag",
+                "enabled": True,
+            },
+            format="json",
+        )
+        
+        assert response.status_code == 201
+        assert response.json()["key"] == "new-flag"
+    
+    def test_list_feature_flags_filters_by_team(self, api_client, team, user):
+        """Test that users only see their team's flags."""
+        api_client.force_authenticate(user=user)
+        
+        # Create flags for this team
+        FeatureFlag.objects.create(team=team, key="team-flag")
+        
+        # Create flag for different team
+        other_team = Team.objects.create(organization=team.organization)
+        FeatureFlag.objects.create(team=other_team, key="other-flag")
+        
+        response = api_client.get(f"/api/projects/{team.id}/feature_flags/")
+        
+        assert response.status_code == 200
+        assert len(response.json()["results"]) == 1
+        assert response.json()["results"][0]["key"] == "team-flag"
+```
+
+### Testing with ClickHouse
+
+Tests that query ClickHouse:
+
+```python
+import pytest
+from posthog.client import sync_execute
+
+@pytest.mark.clickhouse_only
+class TestEventQueries:
+    def test_event_aggregation(self, team):
+        """Test event count aggregation."""
+        # Insert test events
+        sync_execute(
+            """
+            INSERT INTO events (uuid, event, team_id, distinct_id, timestamp)
+            VALUES (%(uuid)s, %(event)s, %(team_id)s, %(distinct_id)s, %(timestamp)s)
+            """,
+            {
+                "uuid": uuid4(),
+                "event": "$pageview",
+                "team_id": team.id,
+                "distinct_id": "user_123",
+                "timestamp": datetime.now(),
+            },
+        )
+        
+        # Query events
+        result = sync_execute(
+            "SELECT count() FROM events WHERE team_id = %(team_id)s",
+            {"team_id": team.id},
+        )
+        
+        assert result[0][0] == 1
+```
+
+## Frontend Testing (Jest)
+
+### Running Frontend Tests
+
+<CodeGroup>
+```bash All tests
+# Run all frontend tests
+pnpm --filter=@posthog/frontend test
+
+# Run in watch mode
+pnpm --filter=@posthog/frontend test:watch
+```
+
+```bash Specific tests
+# Run single test file
+pnpm --filter=@posthog/frontend jest FeatureFlags.test.tsx
+
+# Run tests matching pattern
+pnpm --filter=@posthog/frontend jest --testNamePattern="feature flag"
+```
+
+```bash Coverage
+# Run with coverage
+pnpm --filter=@posthog/frontend test:coverage
+```
+</CodeGroup>
+
+### Writing Frontend Tests
+
+<Steps>
+  <Step title="Component Tests">
+    ```typescript
+    // products/feature_flags/frontend/components/FeatureFlagForm.test.tsx
+    import { render, screen, fireEvent } from '@testing-library/react'
+    import { FeatureFlagForm } from './FeatureFlagForm'
+    
+    describe('FeatureFlagForm', () => {
+        it('renders form fields', () => {
+            render(<FeatureFlagForm />)
+            
+            expect(screen.getByLabelText('Key')).toBeInTheDocument()
+            expect(screen.getByLabelText('Name')).toBeInTheDocument()
+            expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument()
+        })
+        
+        it('validates required fields', async () => {
+            render(<FeatureFlagForm />)
+            
+            fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+            
+            expect(await screen.findByText('Key is required')).toBeInTheDocument()
+        })
+    })
+    ```
+  </Step>
+
+  <Step title="Kea Logic Tests">
+    ```typescript
+    // products/feature_flags/frontend/logics/featureFlagsLogic.test.ts
+    import { expectLogic } from 'kea-test-utils'
+    import { featureFlagsLogic } from './featureFlagsLogic'
+    
+    describe('featureFlagsLogic', () => {
+        it('loads feature flags', async () => {
+            await expectLogic(featureFlagsLogic)
+                .toDispatchActions(['loadFeatureFlags', 'loadFeatureFlagsSuccess'])
+                .toMatchValues({
+                    featureFlags: expect.arrayContaining([
+                        expect.objectContaining({ key: 'test-flag' }),
+                    ]),
+                })
+        })
+    })
+    ```
+  </Step>
+</Steps>
+
+### Jest Best Practices
+
+<Note>
+**Prefer a single top-level `describe` block** per file. Organize tests with nested `describe` blocks only when it significantly improves clarity.
+</Note>
+
+```typescript
+// ✅ Good
+describe('FeatureFlagForm', () => {
+    it('renders correctly', () => { /* ... */ })
+    it('validates input', () => { /* ... */ })
+    it('submits form', () => { /* ... */ })
+})
+
+// ❌ Avoid excessive nesting
+describe('FeatureFlagForm', () => {
+    describe('rendering', () => {
+        describe('when loaded', () => {
+            it('shows form', () => { /* ... */ })
+        })
+    })
+})
+```
+
+## End-to-End Testing (Playwright)
+
+### Running E2E Tests
+
+```bash
+# Run all E2E tests
+pnpm --filter=@posthog/playwright test
+
+# Run in headed mode (see browser)
+pnpm --filter=@posthog/playwright test --headed
+
+# Run specific test file
+pnpm --filter=@posthog/playwright test feature-flags.spec.ts
+
+# Debug mode
+pnpm --filter=@posthog/playwright test --debug
+```
+
+### Writing E2E Tests
+
+```typescript
+// playwright/tests/feature-flags.spec.ts
+import { test, expect } from '@playwright/test'
+
+test.describe('Feature Flags', () => {
+    test('create and enable feature flag', async ({ page }) => {
+        await page.goto('/feature_flags')
+        
+        // Click new flag button
+        await page.click('text=New feature flag')
+        
+        // Fill form
+        await page.fill('[name="key"]', 'test-flag')
+        await page.fill('[name="name"]', 'Test Flag')
+        
+        // Save
+        await page.click('text=Save')
+        
+        // Verify created
+        await expect(page.locator('text=test-flag')).toBeVisible()
+    })
+})
+```
+
+## Selective Testing with Turbo
+
+PostHog uses Turborepo for selective test execution based on changed files:
+
+```bash
+# Run tests only for changed products
+pnpm turbo run backend:test
+
+# See what would run without executing
+pnpm turbo run backend:test --dry-run=json
+
+# Force run all tests (ignore cache)
+pnpm turbo run backend:test --force
+```
+
+**How it works:**
+
+1. Turbo tracks file changes since last test run
+2. Each product defines inputs in `package.json`:
+   ```json
+   {
+     "name": "@posthog/products-feature_flags",
+     "scripts": {
+       "backend:test": "pytest products/feature_flags/backend/tests"
+     }
+   }
+   ```
+3. Only products with changed inputs are tested
+4. Contract files (facades) determine downstream dependencies
+
+<Info>
+When you change a product's facade contracts, downstream products that depend on it will also be retested.
+</Info>
+
+## Testing Best Practices
+
+### General Principles
+
+- **No doc comments in Python tests** - Test names should be self-explanatory
+- **Prefer parameterized tests** - Use `@pytest.mark.parametrize` for multiple cases
+- **One assertion per concept** - But use parameterized tests instead of multiple tests
+- **Test behavior, not implementation** - Focus on what, not how
+- **Keep tests isolated** - No shared state between tests
+
+### Code Examples
+
+<CodeGroup>
+```python ✅ Good
+class TestFeatureFlagEvaluation:
+    @pytest.mark.parametrize(
+        "enabled,expected",
+        [(True, "variant-a"), (False, None)],
+    )
+    def test_returns_variant_when_enabled(
+        self,
+        team,
+        enabled,
+        expected,
+    ):
+        result = evaluate_flag(team.id, enabled)
+        assert result == expected
+```
+
+```python ❌ Avoid
+class TestFeatureFlagEvaluation:
+    def test_flag_evaluation(self, team):
+        """Test that feature flag evaluation works correctly."""
+        # Test enabled
+        result1 = evaluate_flag(team.id, True)
+        assert result1 == "variant-a"
+        
+        # Test disabled  
+        result2 = evaluate_flag(team.id, False)
+        assert result2 is None
+```
+</CodeGroup>
+
+### Security Testing
+
+**Always test team isolation:**
+
+```python
+def test_users_cannot_access_other_teams_flags(self, api_client, user, team):
+    """Verify users can't access flags from other teams."""
+    other_team = Team.objects.create(organization=team.organization)
+    other_flag = FeatureFlag.objects.create(team=other_team, key="other-flag")
+    
+    api_client.force_authenticate(user=user)
+    response = api_client.get(f"/api/projects/{team.id}/feature_flags/{other_flag.id}/")
+    
+    assert response.status_code == 404
+```
+
+## Continuous Integration
+
+Tests run automatically on every pull request:
+
+- **Backend tests**: pytest across all changed products
+- **Frontend tests**: Jest for changed components
+- **E2E tests**: Playwright for critical user flows
+- **Type checking**: TypeScript and mypy (baseline only)
+- **Linting**: Ruff (Python) and oxlint (TypeScript)
+
+<Note>
+**Do not run mypy for type checks locally** - it takes too long. Rely on the baseline and LSP for type hints.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Contributing" icon="code-pull-request" href="/development/contributing">
+    Learn how to contribute to PostHog
+  </Card>
+  <Card title="Architecture" icon="building" href="/architecture/overview">
+    Understand the system architecture
+  </Card>
+</CardGroup>

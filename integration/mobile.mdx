@@ -1,0 +1,652 @@
+---
+title: Mobile SDKs
+description: Native analytics and feature flags for iOS, Android, React Native, and Flutter
+---
+
+PostHog provides native mobile SDKs for iOS, Android, React Native, and Flutter with full support for event tracking, feature flags, session replay, and user identification.
+
+## Choose Your Platform
+
+<CardGroup cols={2}>
+  <Card title="iOS" icon="apple">
+    Native Swift/Objective-C SDK
+  </Card>
+  <Card title="Android" icon="android">
+    Native Kotlin/Java SDK
+  </Card>
+  <Card title="React Native" icon="react">
+    Cross-platform React Native SDK
+  </Card>
+  <Card title="Flutter" icon="flutter">
+    Dart-based Flutter SDK
+  </Card>
+</CardGroup>
+
+## iOS Integration
+
+<Tabs>
+  <Tab title="Installation">
+    <Tabs>
+      <Tab title="CocoaPods">
+        Add PostHog to your `Podfile`:
+        
+        ```ruby Podfile
+        pod "PostHog", "~> 3.0"
+        ```
+        
+        Then run:
+        
+        ```bash
+        pod install
+        ```
+      </Tab>
+      
+      <Tab title="Swift Package Manager">
+        In Xcode, go to **File > Add Packages** and add:
+        
+        ```
+        https://github.com/PostHog/posthog-ios.git
+        ```
+        
+        Or add to your `Package.swift`:
+        
+        ```swift Package.swift
+        dependencies: [
+          .package(
+            url: "https://github.com/PostHog/posthog-ios.git", 
+            from: "3.0.0"
+          )
+        ]
+        ```
+      </Tab>
+    </Tabs>
+  </Tab>
+  
+  <Tab title="Setup">
+    Initialize PostHog in your AppDelegate:
+    
+    ```swift AppDelegate.swift
+    import Foundation
+    import PostHog
+    import UIKit
+
+    class AppDelegate: NSObject, UIApplicationDelegate {
+        func application(
+            _: UIApplication,
+            didFinishLaunchingWithOptions _: [UIApplication.LaunchOptionsKey: Any]? = nil
+        ) -> Bool {
+            let POSTHOG_API_KEY = "<ph_project_token>"
+            let POSTHOG_HOST = "<ph_client_api_host>"
+
+            let config = PostHogConfig(apiKey: POSTHOG_API_KEY, host: POSTHOG_HOST)
+            PostHogSDK.shared.setup(config)
+
+            return true
+        }
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Usage">
+    ### Capture Events
+    
+    ```swift
+    PostHogSDK.shared.capture(
+        "button_clicked",
+        properties: [
+            "button_name": "signup",
+            "screen": "home"
+        ]
+    )
+    ```
+    
+    ### Identify Users
+    
+    ```swift
+    PostHogSDK.shared.identify(
+        "user_123",
+        userProperties: [
+            "email": "user@example.com",
+            "plan": "premium"
+        ]
+    )
+    ```
+    
+    ### Feature Flags
+    
+    ```swift
+    if PostHogSDK.shared.isFeatureEnabled("new-feature") {
+        // Show new feature
+    } else {
+        // Show old feature
+    }
+    
+    // Get variant
+    let variant = PostHogSDK.shared.getFeatureFlag("experiment-name")
+    ```
+    
+    ### Reset on Logout
+    
+    ```swift
+    PostHogSDK.shared.reset()
+    ```
+  </Tab>
+</Tabs>
+
+## Android Integration
+
+<Tabs>
+  <Tab title="Installation">
+    Add PostHog to your `build.gradle` dependencies:
+    
+    ```kotlin build.gradle
+    dependencies {
+        implementation("com.posthog:posthog-android:3.+")
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Setup">
+    Initialize PostHog in your Application class:
+    
+    ```kotlin SampleApp.kt
+    import android.app.Application
+    import com.posthog.PostHog
+    import com.posthog.android.PostHogAndroid
+    import com.posthog.android.PostHogAndroidConfig
+
+    class SampleApp : Application() {
+
+        companion object {
+            const val POSTHOG_API_KEY = "<ph_project_token>"
+            const val POSTHOG_HOST = "<ph_client_api_host>"
+        }
+
+        override fun onCreate() {
+            super.onCreate()
+
+            val config = PostHogAndroidConfig(
+                apiKey = POSTHOG_API_KEY,
+                host = POSTHOG_HOST
+            )
+
+            PostHogAndroid.setup(this, config)
+        }
+    }
+    ```
+    
+    Register your Application class in `AndroidManifest.xml`:
+    
+    ```xml AndroidManifest.xml
+    <application
+        android:name=".SampleApp"
+        ...>
+    </application>
+    ```
+  </Tab>
+  
+  <Tab title="Usage">
+    ### Capture Events
+    
+    ```kotlin
+    import com.posthog.PostHog
+
+    PostHog.capture(
+        event = "button_clicked",
+        properties = mapOf(
+            "button_name" to "signup",
+            "screen" to "home"
+        )
+    )
+    ```
+    
+    ### Identify Users
+    
+    ```kotlin
+    PostHog.identify(
+        distinctId = "user_123",
+        userProperties = mapOf(
+            "email" to "user@example.com",
+            "plan" to "premium"
+        )
+    )
+    ```
+    
+    ### Feature Flags
+    
+    ```kotlin
+    if (PostHog.isFeatureEnabled("new-feature")) {
+        // Show new feature
+    } else {
+        // Show old feature
+    }
+    
+    // Get variant
+    val variant = PostHog.getFeatureFlag("experiment-name")
+    ```
+    
+    ### Reset on Logout
+    
+    ```kotlin
+    PostHog.reset()
+    ```
+  </Tab>
+</Tabs>
+
+## React Native Integration
+
+<Tabs>
+  <Tab title="Installation">
+    <Tabs>
+      <Tab title="Expo">
+        ```bash
+        npx expo install posthog-react-native expo-file-system expo-application expo-device expo-localization
+        ```
+      </Tab>
+      
+      <Tab title="React Native CLI">
+        ```bash
+        npm install posthog-react-native @react-native-async-storage/async-storage react-native-device-info react-native-localize
+        
+        # For iOS
+        cd ios && pod install
+        ```
+      </Tab>
+    </Tabs>
+  </Tab>
+  
+  <Tab title="Setup">
+    Wrap your app with the `PostHogProvider`:
+    
+    ```tsx App.tsx
+    import { PostHogProvider } from 'posthog-react-native'
+
+    export function App() {
+        return (
+            <PostHogProvider
+                apiKey="<ph_project_token>"
+                options={{
+                    host: "<ph_client_api_host>",
+                }}
+            >
+                <RestOfApp />
+            </PostHogProvider>
+        )
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Usage">
+    ### Use the Hook
+    
+    ```tsx
+    import { usePostHog } from 'posthog-react-native'
+
+    function MyComponent() {
+        const posthog = usePostHog()
+
+        const handlePress = () => {
+            posthog.capture('button_pressed', {
+                button_name: 'signup'
+            })
+        }
+
+        return <Button onPress={handlePress} title="Sign Up" />
+    }
+    ```
+    
+    ### Identify Users
+    
+    ```tsx
+    const posthog = usePostHog()
+
+    posthog.identify('user_123', {
+        email: 'user@example.com',
+        name: 'Jane Doe'
+    })
+    ```
+    
+    ### Feature Flags
+    
+    ```tsx
+    import { useFeatureFlag } from 'posthog-react-native'
+
+    function FeatureComponent() {
+        const showNewUI = useFeatureFlag('new-ui')
+
+        if (showNewUI) {
+            return <NewUI />
+        }
+        return <OldUI />
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Flutter Integration
+
+<Tabs>
+  <Tab title="Installation">
+    Add to your `pubspec.yaml`:
+    
+    ```yaml pubspec.yaml
+    dependencies:
+      posthog_flutter: ^5.0.0
+    ```
+    
+    Then run:
+    
+    ```bash
+    flutter pub get
+    ```
+  </Tab>
+  
+  <Tab title="Platform Setup">
+    <Tabs>
+      <Tab title="Android">
+        Add to `AndroidManifest.xml`:
+        
+        ```xml android/app/src/main/AndroidManifest.xml
+        <application>
+          <activity>
+            [...]
+          </activity>
+          <meta-data 
+            android:name="com.posthog.posthog.API_KEY" 
+            android:value="<ph_project_token>" 
+          />
+          <meta-data 
+            android:name="com.posthog.posthog.POSTHOG_HOST" 
+            android:value="<ph_client_api_host>" 
+          />
+          <meta-data 
+            android:name="com.posthog.posthog.TRACK_APPLICATION_LIFECYCLE_EVENTS" 
+            android:value="true" 
+          />
+        </application>
+        ```
+        
+        Update minimum SDK version in `build.gradle`:
+        
+        ```groovy android/app/build.gradle
+        defaultConfig {
+          minSdkVersion 21
+          // rest of config
+        }
+        ```
+      </Tab>
+      
+      <Tab title="iOS">
+        Add to `Info.plist`:
+        
+        ```xml ios/Runner/Info.plist
+        <dict>
+          [...]
+          <key>com.posthog.posthog.API_KEY</key>
+          <string><ph_project_token></string>
+          <key>com.posthog.posthog.POSTHOG_HOST</key>
+          <string><ph_client_api_host></string>
+          <key>com.posthog.posthog.CAPTURE_APPLICATION_LIFECYCLE_EVENTS</key>
+          <true/>
+        </dict>
+        ```
+        
+        Update minimum iOS version in `Podfile`:
+        
+        ```ruby Podfile
+        platform :ios, '13.0'
+        ```
+      </Tab>
+    </Tabs>
+  </Tab>
+  
+  <Tab title="Usage">
+    ### Capture Events
+    
+    ```dart
+    import 'package:posthog_flutter/posthog_flutter.dart';
+
+    await Posthog().capture(
+        eventName: 'button_clicked',
+        properties: {
+          'button_name': 'signup',
+          'screen': 'home'
+        }
+    );
+    ```
+    
+    ### Identify Users
+    
+    ```dart
+    await Posthog().identify(
+        userId: 'user_123',
+        userProperties: {
+          'email': 'user@example.com',
+          'plan': 'premium'
+        }
+    );
+    ```
+    
+    ### Feature Flags
+    
+    ```dart
+    final isEnabled = await Posthog().isFeatureEnabled('new-feature');
+    
+    if (isEnabled) {
+      // Show new feature
+    } else {
+      // Show old feature
+    }
+    
+    // Get variant
+    final variant = await Posthog().getFeatureFlag('experiment-name');
+    ```
+    
+    ### Screen Tracking
+    
+    ```dart
+    await Posthog().screen(
+        screenName: 'HomeScreen',
+        properties: {
+          'category': 'main'
+        }
+    );
+    ```
+  </Tab>
+</Tabs>
+
+## Common Features
+
+All mobile SDKs support these core features:
+
+### Automatic Event Capture
+
+- App lifecycle events (app opened, backgrounded)
+- Screen views (automatically tracked)
+- App crashes and errors
+
+### Session Replay
+
+Mobile session replay captures screen recordings, touch interactions, and network activity (where supported).
+
+<Note>
+Mobile session replay is currently in beta. Check the [session replay docs](https://posthog.com/docs/session-replay/mobile) for platform availability.
+</Note>
+
+### Group Analytics
+
+Track events for organizations or teams:
+
+<CodeGroup>
+```swift iOS
+PostHogSDK.shared.group(
+    type: "company",
+    key: "company_id_123",
+    groupProperties: [
+        "name": "Acme Corporation",
+        "plan": "enterprise"
+    ]
+)
+```
+
+```kotlin Android
+PostHog.group(
+    type = "company",
+    key = "company_id_123",
+    groupProperties = mapOf(
+        "name" to "Acme Corporation",
+        "plan" to "enterprise"
+    )
+)
+```
+
+```tsx React Native
+posthog.group('company', 'company_id_123', {
+    name: 'Acme Corporation',
+    plan: 'enterprise'
+})
+```
+
+```dart Flutter
+await Posthog().group(
+    groupType: 'company',
+    groupKey: 'company_id_123',
+    groupProperties: {
+        'name': 'Acme Corporation',
+        'plan': 'enterprise'
+    }
+);
+```
+</CodeGroup>
+
+## Privacy & Compliance
+
+### Opt Out
+
+All SDKs support opt-out for privacy compliance:
+
+<CodeGroup>
+```swift iOS
+PostHogSDK.shared.optOut()
+PostHogSDK.shared.optIn()  // Re-enable
+```
+
+```kotlin Android
+PostHog.optOut()
+PostHog.optIn()  // Re-enable
+```
+
+```tsx React Native
+posthog.optOut()
+posthog.optIn()  // Re-enable
+```
+
+```dart Flutter
+await Posthog().disable()
+await Posthog().enable()  // Re-enable
+```
+</CodeGroup>
+
+### Data Masking
+
+Configure what data is captured:
+
+<CodeGroup>
+```swift iOS
+let config = PostHogConfig(apiKey: apiKey, host: host)
+config.captureScreenViews = false
+config.captureElementInteractions = false
+```
+
+```kotlin Android
+val config = PostHogAndroidConfig(
+    apiKey = apiKey,
+    host = host
+).apply {
+    captureScreenViews = false
+    captureApplicationLifecycleEvents = false
+}
+```
+</CodeGroup>
+
+## Debugging
+
+Enable debug mode to see SDK activity:
+
+<CodeGroup>
+```swift iOS
+let config = PostHogConfig(apiKey: apiKey, host: host)
+config.debug = true
+```
+
+```kotlin Android
+val config = PostHogAndroidConfig(
+    apiKey = apiKey,
+    host = host
+).apply {
+    debug = true
+}
+```
+
+```tsx React Native
+<PostHogProvider
+    apiKey={apiKey}
+    options={{
+        host: host,
+        debug: true
+    }}
+>
+```
+</CodeGroup>
+
+## Best Practices
+
+<Note>
+**Initialize Early**: Initialize PostHog as early as possible in your app lifecycle to ensure all events are captured.
+</Note>
+
+<Note>
+**Test on Real Devices**: Always test on physical devices, not just simulators/emulators, to catch platform-specific issues.
+</Note>
+
+<Note>
+**Handle Permissions**: Some features (like session replay) may require specific permissions. Handle these gracefully in your app.
+</Note>
+
+<Note>
+**Flush on Background**: Events are automatically flushed when the app goes to background, but you can manually flush if needed.
+</Note>
+
+## Platform-Specific Documentation
+
+<CardGroup cols={2}>
+  <Card title="iOS SDK" href="https://posthog.com/docs/libraries/ios">
+    Complete iOS SDK documentation
+  </Card>
+  <Card title="Android SDK" href="https://posthog.com/docs/libraries/android">
+    Complete Android SDK documentation
+  </Card>
+  <Card title="React Native SDK" href="https://posthog.com/docs/libraries/react-native">
+    Complete React Native documentation
+  </Card>
+  <Card title="Flutter SDK" href="https://posthog.com/docs/libraries/flutter">
+    Complete Flutter SDK documentation
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Feature Flags" href="https://posthog.com/docs/feature-flags">
+    Learn about mobile feature flag patterns
+  </Card>
+  <Card title="Session Replay" href="https://posthog.com/docs/session-replay/mobile">
+    Configure mobile session replay
+  </Card>
+  <Card title="Group Analytics" href="https://posthog.com/docs/product-analytics/group-analytics">
+    Track B2B metrics by organization
+  </Card>
+  <Card title="SDK Overview" href="/integration/sdks">
+    Explore all available SDKs
+  </Card>
+</CardGroup>

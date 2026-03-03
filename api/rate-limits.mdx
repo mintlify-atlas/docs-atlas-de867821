@@ -1,0 +1,327 @@
+---
+title: "Rate limits"
+description: "Understanding API rate limits and optimization strategies"
+---
+
+PostHog implements rate limiting to ensure fair usage and protect API performance. Rate limits are applied per API key and per team.
+
+## Rate limit tiers
+
+PostHog applies different rate limits based on the endpoint type:
+
+### Standard API endpoints
+
+Applies to most read and write operations:
+
+| Limit Type | Rate | Scope |
+|-----------|------|-------|
+| **Burst** | 480 requests/minute | Per API key |
+| **Sustained** | 4,800 requests/hour | Per API key |
+
+### ClickHouse query endpoints
+
+More aggressive limits for analytics queries that hit the database:
+
+| Limit Type | Rate | Scope |
+|-----------|------|-------|
+| **Burst** | 240 requests/minute | Per API key |
+| **Sustained** | 1,200 requests/hour | Per API key |
+
+**Affected endpoints:**
+- `/api/projects/{id}/insights/`
+- `/api/projects/{id}/events/`
+- `/api/projects/{id}/persons/`
+- `/api/projects/{id}/sessions/`
+- Other analytics and data query endpoints
+
+### HogQL query endpoints
+
+Custom rate limits for HogQL queries:
+
+| Limit Type | Rate | Scope |
+|-----------|------|-------|
+| **Default** | 120 requests/hour | Per API key |
+| **Custom** | Configurable per team | Per team |
+
+<Info>
+Teams can configure custom HogQL query rate limits. Contact support to adjust your team's limit if you need higher throughput.
+</Info>
+
+### Specific endpoint limits
+
+Certain endpoints have specialized rate limits:
+
+| Endpoint | Rate | Purpose |
+|---------|------|------|
+| **AI/LLM endpoints** | 10 requests/minute, 100/day | LLM-powered features |
+| **Event values** | 60 requests/minute, 300/hour | Event property queries |
+| **Signup** | 5 requests/day per IP | Account creation |
+| **Password reset** | 6 requests/day | Password resets |
+
+### Unlimited endpoints
+
+These endpoints are **not** rate limited:
+
+- `/decide/` - Feature flag evaluation
+- `/capture/` - Event ingestion
+- `/batch/` - Batch event ingestion
+
+## Rate limit headers
+
+API responses include headers to track your rate limit status:
+
+```bash
+X-RateLimit-Limit: 480
+X-RateLimit-Remaining: 475
+X-RateLimit-Reset: 1704225600
+```
+
+| Header | Description |
+|--------|-------------|
+| `X-RateLimit-Limit` | Maximum requests allowed in the current window |
+| `X-RateLimit-Remaining` | Requests remaining in the current window |
+| `X-RateLimit-Reset` | Unix timestamp when the limit resets |
+
+### Checking rate limits
+
+You can check your current rate limit status without consuming quota by inspecting the headers:
+
+```python
+import requests
+import time
+
+response = requests.get(
+    'https://us.posthog.com/api/projects/',
+    headers={'Authorization': 'Bearer YOUR_API_KEY'}
+)
+
+remaining = int(response.headers.get('X-RateLimit-Remaining', 0))
+reset_time = int(response.headers.get('X-RateLimit-Reset', 0))
+
+if remaining < 10:
+    wait_seconds = reset_time - int(time.time())
+    print(f"Low on quota. Resets in {wait_seconds} seconds")
+```
+
+## Rate limit exceeded
+
+When you exceed a rate limit, the API returns a `429 Too Many Requests` response:
+
+```json
+{
+  "detail": "Request was throttled. Expected available in 42 seconds."
+}
+```
+
+The response includes a `Retry-After` header indicating when you can retry:
+
+```bash
+HTTP/1.1 429 Too Many Requests
+Retry-After: 42
+```
+
+### Handling rate limits
+
+<CodeGroup>
+```python Python with retry logic
+import requests
+import time
+
+def make_request_with_retry(url, headers, max_retries=3):
+    for attempt in range(max_retries):
+        response = requests.get(url, headers=headers)
+        
+        if response.status_code == 429:
+            # Rate limited - wait and retry
+            retry_after = int(response.headers.get('Retry-After', 60))
+            print(f"Rate limited. Waiting {retry_after} seconds...")
+            time.sleep(retry_after)
+            continue
+        
+        if response.status_code == 200:
+            return response.json()
+        
+        response.raise_for_status()
+    
+    raise Exception("Max retries exceeded")
+
+# Usage
+data = make_request_with_retry(
+    'https://us.posthog.com/api/projects/',
+    {'Authorization': 'Bearer YOUR_API_KEY'}
+)
+```
+
+```javascript JavaScript with exponential backoff
+async function makeRequestWithRetry(url, headers, maxRetries = 3) {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const response = await fetch(url, { headers });
+    
+    if (response.status === 429) {
+      // Rate limited - exponential backoff
+      const retryAfter = response.headers.get('Retry-After') || 60;
+      const waitTime = parseInt(retryAfter) * 1000;
+      console.log(`Rate limited. Waiting ${waitTime}ms...`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+      continue;
+    }
+    
+    if (response.ok) {
+      return await response.json();
+    }
+    
+    throw new Error(`HTTP ${response.status}`);
+  }
+  
+  throw new Error('Max retries exceeded');
+}
+
+// Usage
+const data = await makeRequestWithRetry(
+  'https://us.posthog.com/api/projects/',
+  { 'Authorization': 'Bearer YOUR_API_KEY' }
+);
+```
+</CodeGroup>
+
+## Best practices
+
+### 1. Implement exponential backoff
+
+When you hit a rate limit, wait before retrying. Increase wait time with each subsequent failure:
+
+```python
+import time
+
+def exponential_backoff(attempt):
+    """Calculate wait time: 1s, 2s, 4s, 8s, etc."""
+    return min(2 ** attempt, 60)  # Cap at 60 seconds
+
+for attempt in range(5):
+    response = requests.get(url, headers=headers)
+    
+    if response.status_code != 429:
+        break
+    
+    wait_time = exponential_backoff(attempt)
+    time.sleep(wait_time)
+```
+
+### 2. Batch requests when possible
+
+Instead of making multiple individual requests, use batch endpoints:
+
+```python
+# Bad: Multiple individual requests
+for person_id in person_ids:
+    response = requests.get(f'{BASE_URL}/persons/{person_id}/', headers=headers)
+    # Process response...
+
+# Good: Single batch request
+response = requests.post(
+    f'{BASE_URL}/persons/query/',
+    headers=headers,
+    json={'person_ids': person_ids}
+)
+```
+
+### 3. Cache responses
+
+Cache API responses to reduce request volume:
+
+```python
+import time
+
+cache = {}
+CACHE_TTL = 300  # 5 minutes
+
+def get_with_cache(url, headers):
+    now = time.time()
+    
+    # Check cache
+    if url in cache:
+        data, timestamp = cache[url]
+        if now - timestamp < CACHE_TTL:
+            return data
+    
+    # Fetch fresh data
+    response = requests.get(url, headers=headers)
+    data = response.json()
+    
+    # Update cache
+    cache[url] = (data, now)
+    return data
+```
+
+### 4. Monitor your usage
+
+Track rate limit headers to stay under limits:
+
+```python
+class RateLimitTracker:
+    def __init__(self):
+        self.remaining = None
+        self.reset_time = None
+    
+    def update(self, response):
+        self.remaining = int(response.headers.get('X-RateLimit-Remaining', 0))
+        self.reset_time = int(response.headers.get('X-RateLimit-Reset', 0))
+    
+    def should_wait(self, threshold=10):
+        """Return True if we're close to the limit"""
+        if self.remaining is None:
+            return False
+        return self.remaining < threshold
+    
+    def wait_until_reset(self):
+        if self.reset_time:
+            wait_seconds = max(0, self.reset_time - int(time.time()))
+            time.sleep(wait_seconds)
+```
+
+### 5. Use webhooks for real-time data
+
+Instead of polling the API, use webhooks to receive updates:
+
+```python
+# Bad: Polling every minute
+while True:
+    events = requests.get(f'{BASE_URL}/events/', headers=headers).json()
+    process_events(events)
+    time.sleep(60)
+
+# Good: Configure webhook to receive events
+# Set up webhook endpoint in PostHog settings
+# Your server receives events as they happen
+```
+
+## Team-specific rate limits
+
+PostHog supports custom rate limits for HogQL queries on a per-team basis. These are stored in the database and cached for performance.
+
+### Configuring custom limits
+
+Custom limits are set via the `api_query_rate_limit` field on your team. Contact PostHog support to configure:
+
+```
+api_query_rate_limit = "200/day"  # 200 requests per day
+api_query_rate_limit = "100/hour" # 100 requests per hour
+api_query_rate_limit = "10/minute" # 10 requests per minute
+```
+
+<Note>
+Custom rate limits override the default 120 requests/hour limit for HogQL queries.
+</Note>
+
+## Increasing your rate limits
+
+If you consistently hit rate limits:
+
+1. **Optimize your integration** - Use the best practices above
+2. **Review your query patterns** - Identify unnecessary requests
+3. **Contact support** - Enterprise customers can request higher limits
+
+When contacting support, include:
+- Your use case and requirements
+- Current request volume and patterns
+- Steps you've taken to optimize

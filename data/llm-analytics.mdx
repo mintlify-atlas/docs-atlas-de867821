@@ -1,0 +1,572 @@
+---
+title: LLM Analytics
+description: Monitor, evaluate, and optimize LLM applications with trace analysis and automated evaluations
+---
+
+LLM Analytics provides observability for AI applications. Track traces, analyze conversations, run automated evaluations, and monitor model performance across providers.
+
+## Overview
+
+LLM Analytics offers:
+
+- **Trace collection** - Capture LLM calls, tool usage, and conversation flows
+- **Automated evaluations** - LLM-as-judge for quality, hallucinations, and toxicity
+- **Provider proxy** - Route requests through PostHog with provider key management
+- **Clustering** - Group similar traces to identify patterns
+- **Cost tracking** - Monitor token usage and costs across providers
+
+## Getting Started
+
+### Install SDK
+
+<CodeGroup>
+
+```bash Python
+pip install posthog
+```
+
+```bash JavaScript
+npm install posthog-node
+```
+
+```bash Go  
+go get github.com/posthog/posthog-go
+```
+
+</CodeGroup>
+
+### Capture LLM Traces
+
+<CodeGroup>
+
+```python Python (OpenAI)
+import posthog
+from openai import OpenAI
+
+posthog.api_key = '<ph_project_api_key>'
+client = OpenAI()
+
+with posthog.trace("chat_completion") as trace:
+    response = client.chat.completions.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": "What is PostHog?"}
+        ]
+    )
+    
+    # Log the generation
+    trace.generation(
+        model="gpt-4",
+        input=messages,
+        output=response.choices[0].message.content,
+        usage={
+            "prompt_tokens": response.usage.prompt_tokens,
+            "completion_tokens": response.usage.completion_tokens,
+            "total_tokens": response.usage.total_tokens
+        }
+    )
+```
+
+```javascript JavaScript (Anthropic)
+const { PostHog } = require('posthog-node');
+const Anthropic = require('@anthropic-ai/sdk');
+
+const posthog = new PostHog('<ph_project_api_key>');
+const anthropic = new Anthropic();
+
+await posthog.trace('chat_completion', async (trace) => {
+  const response = await anthropic.messages.create({
+    model: 'claude-3-opus-20240229',
+    messages: [{
+      role: 'user',
+      content: 'What is PostHog?'
+    }]
+  });
+  
+  trace.generation({
+    model: 'claude-3-opus-20240229',
+    input: messages,
+    output: response.content[0].text,
+    usage: {
+      input_tokens: response.usage.input_tokens,
+      output_tokens: response.usage.output_tokens
+    }
+  });
+});
+```
+
+</CodeGroup>
+
+### Track Tool Usage
+
+Capture function calls and tool usage:
+
+```python
+with posthog.trace("agent_workflow") as trace:
+    # User message
+    trace.message(
+        role="user",
+        content="What's the weather in San Francisco?"
+    )
+    
+    # Tool call
+    trace.tool_call(
+        name="get_weather",
+        arguments={"location": "San Francisco"},
+        result={"temperature": 72, "condition": "sunny"}
+    )
+    
+    # Assistant response
+    trace.generation(
+        model="gpt-4",
+        input="Generate response with weather data",
+        output="It's currently 72°F and sunny in San Francisco."
+    )
+```
+
+## Automated Evaluations
+
+Run LLM-as-judge evaluations on your traces:
+
+### Creating an Evaluation
+
+<Steps>
+
+<Step title="Define evaluation criteria">
+```python
+evaluation = {
+    "name": "Response Quality",
+    "evaluation_type": "llm_as_judge",
+    "evaluation_config": {
+        "prompt": """
+            Evaluate the assistant's response on:
+            1. Accuracy - Is the information correct?
+            2. Helpfulness - Does it answer the user's question?
+            3. Tone - Is it professional and friendly?
+            
+            Rate from 1-5 and explain your reasoning.
+        """,
+        "model": "gpt-4"
+    },
+    "output_type": "numeric_score",
+    "conditions": [
+        {
+            "properties": [
+                {
+                    "key": "trace_type",
+                    "value": "chat_completion",
+                    "operator": "exact"
+                }
+            ]
+        }
+    ]
+}
+```
+</Step>
+
+<Step title="Enable evaluation">
+```python
+POST /api/projects/{project_id}/llm_analytics/evaluations/
+
+{
+  "name": "Response Quality",
+  "enabled": true,
+  "evaluation_type": "llm_as_judge",
+  "evaluation_config": {...},
+  "output_type": "numeric_score"
+}
+```
+</Step>
+
+<Step title="View results">
+Evaluations run automatically on new traces. View scores in the trace detail view.
+</Step>
+
+</Steps>
+
+### Evaluation Types
+
+<CodeGroup>
+
+```python Hallucination Detection
+{
+  "evaluation_type": "hallucination",
+  "evaluation_config": {
+    "prompt": "Does the response contain information not present in the context?",
+    "context_field": "event.properties.context"
+  },
+  "output_type": "boolean"
+}
+```
+
+```python Toxicity Check
+{
+  "evaluation_type": "toxicity",
+  "evaluation_config": {
+    "prompt": "Rate the toxicity of this response from 1-10",
+    "threshold": 5
+  },
+  "output_type": "numeric_score"
+}
+```
+
+```python Custom Rubric
+{
+  "evaluation_type": "rubric",
+  "evaluation_config": {
+    "prompt": """
+      Evaluate on these criteria:
+      - Technical Accuracy (1-5)
+      - Code Quality (1-5)  
+      - Explanation Clarity (1-5)
+      Return JSON with scores for each.
+    """
+  },
+  "output_type": "structured"
+}
+```
+
+</CodeGroup>
+
+### Model Configuration
+
+Configure evaluation models:
+
+```python
+POST /api/projects/{project_id}/llm_analytics/model_configurations/
+
+{
+  "provider": "openai",
+  "model": "gpt-4",
+  "temperature": 0.2,
+  "max_tokens": 1000
+}
+```
+
+Supported providers:
+- OpenAI (GPT-3.5, GPT-4)
+- Anthropic (Claude)
+- Google (Gemini)
+- OpenRouter (multiple models)
+- Fireworks AI
+
+## Clustering
+
+Automatically group similar traces:
+
+```python
+POST /api/projects/{project_id}/llm_analytics/clustering_configs/
+
+{
+  "name": "User Intent Clustering",
+  "model_configuration_id": "config_123",
+  "min_cluster_size": 5,
+  "filters": {
+    "properties": [
+      {"key": "trace_type", "value": "user_query"}
+    ]
+  }
+}
+```
+
+View clusters:
+
+```python
+GET /api/projects/{project_id}/llm_analytics/clusters/
+
+{
+  "clusters": [
+    {
+      "id": "cluster_1",
+      "description": "Users asking about pricing",
+      "size": 342,
+      "sample_traces": [...]
+    },
+    {
+      "id": "cluster_2",
+      "description": "Technical support questions",
+      "size": 198,
+      "sample_traces": [...]
+    }
+  ]
+}
+```
+
+## Provider Proxy
+
+Route LLM requests through PostHog for unified tracking:
+
+### Setup Provider Keys
+
+```python
+POST /api/projects/{project_id}/llm_analytics/provider_keys/
+
+{
+  "provider": "openai",
+  "api_key": "sk-..."
+}
+```
+
+### Use Proxy
+
+<CodeGroup>
+
+```python Python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="https://app.posthog.com/api/llm_proxy/v1",
+    api_key="<ph_project_api_key>"
+)
+
+response = client.chat.completions.create(
+    model="gpt-4",
+    messages=[{"role": "user", "content": "Hello"}]
+)
+# Automatically tracked in PostHog
+```
+
+```javascript JavaScript
+const { OpenAI } = require('openai');
+
+const client = new OpenAI({
+  baseURL: 'https://app.posthog.com/api/llm_proxy/v1',
+  apiKey: '<ph_project_api_key>'
+});
+
+const response = await client.chat.completions.create({
+  model: 'gpt-4',
+  messages: [{role: 'user', content: 'Hello'}]
+});
+```
+
+</CodeGroup>
+
+### Benefits
+
+- **Automatic tracing** - No manual instrumentation needed
+- **Cost tracking** - Monitor spend across providers
+- **Provider fallback** - Automatic failover to backup providers
+- **Rate limiting** - Shared rate limit management
+
+## Datasets
+
+Create datasets for offline evaluation:
+
+```python
+POST /api/projects/{project_id}/llm_analytics/datasets/
+
+{
+  "name": "Customer Support QA",
+  "description": "Curated set of support questions",
+  "items": [
+    {
+      "input": "How do I reset my password?",
+      "expected_output": "Click 'Forgot Password' on the login page...",
+      "metadata": {"category": "authentication"}
+    }
+  ]
+}
+```
+
+Run evaluations on datasets:
+
+```python
+POST /api/projects/{project_id}/llm_analytics/evaluation_runs/
+
+{
+  "dataset_id": "dataset_123",
+  "evaluation_id": "eval_456",
+  "model_configuration_id": "config_789"
+}
+```
+
+## Metrics and Monitoring
+
+### Trace Metrics
+
+Track key metrics:
+
+```python
+GET /api/projects/{project_id}/llm_analytics/metrics/
+
+{
+  "period": "7d",
+  "metrics": {
+    "total_traces": 15234,
+    "total_tokens": 4523412,
+    "total_cost": 67.89,
+    "avg_latency_ms": 1234,
+    "error_rate": 0.023,
+    "p95_latency_ms": 2500
+  },
+  "by_model": {
+    "gpt-4": {"traces": 5000, "cost": 45.20},
+    "gpt-3.5-turbo": {"traces": 10234, "cost": 22.69}
+  }
+}
+```
+
+### Error Tracking
+
+Monitor errors and failures:
+
+```python
+GET /api/projects/{project_id}/llm_analytics/errors/
+
+{
+  "errors": [
+    {
+      "error_type": "RateLimitError",
+      "count": 23,
+      "last_seen": "2024-01-15T10:30:00Z",
+      "provider": "openai"
+    },
+    {
+      "error_type": "TimeoutError",
+      "count": 12,
+      "provider": "anthropic"
+    }
+  ]
+}
+```
+
+### Latency Tracking
+
+Prometheus metrics for latency:
+
+```python
+# llma_request_duration_seconds
+# Histogram with p50, p95, p99 percentiles
+
+# llma_llm_call_duration_seconds  
+# Histogram by provider
+
+# llma_errors_total
+# Counter by error type
+```
+
+## Sentiment Analysis
+
+Analyze conversation sentiment:
+
+```python
+POST /api/projects/{project_id}/llm_analytics/sentiment/
+
+{
+  "trace_id": "trace_123",
+  "text": "The assistant was very helpful and solved my problem!"
+}
+
+Response:
+{
+  "sentiment": "positive",
+  "score": 0.92,
+  "confidence": 0.95
+}
+```
+
+## Summarization
+
+Generate trace summaries:
+
+```python
+POST /api/projects/{project_id}/llm_analytics/summarization/
+
+{
+  "trace_id": "trace_123",
+  "model": "gpt-4"
+}
+
+Response:
+{
+  "summary": "User asked about pricing. Assistant explained tier structure and provided discount code.",
+  "key_points": [
+    "Pricing inquiry",
+    "Tier explanation provided",
+    "Discount code shared"
+  ]
+}
+```
+
+## Best Practices
+
+<Card title="Structured Traces" icon="diagram-project">
+  Use consistent trace naming and include relevant metadata. This makes filtering,
+  clustering, and analysis much more effective.
+</Card>
+
+<Card title="Evaluation Coverage" icon="check-double">
+  Start with a few key evaluations (quality, hallucination) rather than many.
+  Refine based on actual issues you discover.
+</Card>
+
+<Card title="Cost Monitoring" icon="dollar-sign">
+  Set up alerts for unusual cost spikes. Track cost per trace to identify
+  expensive patterns early.
+</Card>
+
+<Card title="Provider Keys" icon="key">
+  Use the proxy with BYOK (bring your own keys) for production. This gives you
+  automatic tracing without SDK changes.
+</Card>
+
+## API Reference
+
+### Create Trace
+
+```python
+POST /api/projects/{project_id}/llm_analytics/traces/
+
+{
+  "trace_id": "unique_trace_id",
+  "name": "chat_completion",
+  "metadata": {
+    "user_id": "user_123",
+    "session_id": "session_456"
+  },
+  "events": [
+    {
+      "type": "generation",
+      "model": "gpt-4",
+      "input": [...],
+      "output": "...",
+      "usage": {...}
+    }
+  ]
+}
+```
+
+### Get Trace
+
+```python
+GET /api/projects/{project_id}/llm_analytics/traces/{trace_id}/
+
+Response:
+{
+  "id": "trace_123",
+  "name": "chat_completion",
+  "events": [...],
+  "evaluations": [...],
+  "metrics": {...}
+}
+```
+
+### List Evaluations
+
+```python
+GET /api/projects/{project_id}/llm_analytics/evaluations/
+
+Response:
+{
+  "results": [
+    {
+      "id": "eval_123",
+      "name": "Response Quality",
+      "enabled": true,
+      "evaluation_type": "llm_as_judge"
+    }
+  ]
+}
+```

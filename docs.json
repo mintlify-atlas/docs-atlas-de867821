@@ -1,122 +1,146 @@
 {
   "$schema": "https://mintlify.com/docs.json",
+  "name": "PostHog",
   "theme": "mint",
-  "name": "Mint Starter Kit",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#F9BD2B",
+    "light": "#F9BD2B",
+    "dark": "#F9BD2B"
   },
   "favicon": "/favicon.svg",
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/PostHog/posthog"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/PostHog/posthog"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
             "pages": [
-              "index",
+              "introduction",
               "quickstart",
-              "development"
+              "installation"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Core Products",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "products/product-analytics",
+              "products/web-analytics",
+              "products/session-replay",
+              "products/feature-flags",
+              "products/experiments",
+              "products/surveys",
+              "products/error-tracking"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Data & Infrastructure",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "data/data-warehouse",
+              "data/data-pipelines",
+              "data/cdp",
+              "data/llm-analytics"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Integration",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "integration/sdks",
+              "integration/javascript",
+              "integration/python",
+              "integration/react",
+              "integration/mobile"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/organizations",
+              "configuration/projects",
+              "configuration/authentication",
+              "configuration/self-hosting"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Overview",
             "pages": [
-              "api-reference/introduction"
+              "api/overview",
+              "api/authentication",
+              "api/rate-limits"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Events",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api/events/capture",
+              "api/events/query",
+              "api/events/list"
+            ]
+          },
+          {
+            "group": "Feature Flags",
+            "pages": [
+              "api/feature-flags/create",
+              "api/feature-flags/evaluate",
+              "api/feature-flags/list"
+            ]
+          },
+          {
+            "group": "Cohorts",
+            "pages": [
+              "api/cohorts/create",
+              "api/cohorts/list",
+              "api/cohorts/update"
+            ]
+          },
+          {
+            "group": "Insights",
+            "pages": [
+              "api/insights/create",
+              "api/insights/query",
+              "api/insights/list"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Architecture",
+        "groups": [
+          {
+            "group": "System Design",
+            "pages": [
+              "architecture/overview",
+              "architecture/monorepo-structure",
+              "architecture/products",
+              "architecture/data-model"
+            ]
+          },
+          {
+            "group": "Development",
+            "pages": [
+              "development/setup",
+              "development/testing",
+              "development/contributing"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

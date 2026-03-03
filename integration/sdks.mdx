@@ -1,0 +1,153 @@
+---
+title: SDK Overview
+description: Comprehensive guide to all PostHog SDKs and integration options
+---
+
+PostHog provides SDKs and libraries for all major platforms and frameworks, making it easy to integrate analytics, feature flags, session replay, and more into your applications.
+
+## Client-side SDKs
+
+Client-side SDKs run in the browser or mobile app and automatically capture user interactions, pageviews, and session data.
+
+<CardGroup cols={2}>
+  <Card title="JavaScript" icon="js" href="/integration/javascript">
+    Browser-based analytics with autocapture for web applications
+  </Card>
+  <Card title="React" icon="react" href="/integration/react">
+    React-specific integration with hooks and components
+  </Card>
+  <Card title="Mobile SDKs" icon="mobile" href="/integration/mobile">
+    Native SDKs for iOS, Android, React Native, and Flutter
+  </Card>
+  <Card title="Next.js" icon="N" href="https://posthog.com/docs/libraries/next-js">
+    Full-stack Next.js integration with SSR support
+  </Card>
+</CardGroup>
+
+### Web Frameworks
+
+- **[Vue.js](https://posthog.com/docs/libraries/vue-js)** - Vue 3 and Composition API support
+- **[Angular](https://posthog.com/docs/libraries/angular)** - Angular integration with dependency injection
+- **[Svelte](https://posthog.com/docs/libraries/svelte)** - Lightweight Svelte integration
+- **[Remix](https://posthog.com/docs/libraries/remix)** - Full-stack Remix framework support
+
+### No-code & CMS
+
+- **[WordPress](https://posthog.com/docs/libraries/wordpress)** - Plugin for WordPress sites
+- **[Webflow](https://posthog.com/docs/libraries/webflow)** - No-code Webflow integration
+- **[Shopify](https://posthog.com/docs/libraries/shopify)** - E-commerce analytics for Shopify stores
+- **[HTML Snippet](https://posthog.com/docs/getting-started/install?tab=snippet)** - Simple script tag for any website
+
+## Server-side SDKs
+
+Server-side SDKs are ideal for backend services, APIs, and server-rendered applications where you need to track events, evaluate feature flags, or identify users from your server.
+
+<CardGroup cols={2}>
+  <Card title="Python" icon="python" href="/integration/python">
+    Python SDK for Django, Flask, FastAPI, and more
+  </Card>
+  <Card title="Node.js" icon="node-js" href="https://posthog.com/docs/libraries/node">
+    Node.js SDK for server-side JavaScript and TypeScript
+  </Card>
+  <Card title="Ruby" icon="gem" href="https://posthog.com/docs/libraries/ruby">
+    Ruby SDK with Rails integration
+  </Card>
+  <Card title="PHP" icon="php" href="https://posthog.com/docs/libraries/php">
+    PHP SDK for Laravel and other frameworks
+  </Card>
+</CardGroup>
+
+### Additional Server SDKs
+
+- **[Go](https://posthog.com/docs/libraries/go)** - High-performance Go SDK
+- **[.NET/C#](https://posthog.com/docs/libraries/dotnet)** - .NET and C# integration
+- **[Elixir](https://posthog.com/docs/libraries/elixir)** - Elixir and Phoenix support
+
+## Mobile SDKs
+
+<Note>
+For detailed mobile integration guides, see [Mobile SDKs](/integration/mobile).
+</Note>
+
+Native mobile SDKs with full feature support:
+
+- **[iOS](https://posthog.com/docs/libraries/ios)** - Swift and Objective-C support
+- **[Android](https://posthog.com/docs/libraries/android)** - Kotlin and Java support
+- **[React Native](https://posthog.com/docs/libraries/react-native)** - Cross-platform React Native
+- **[Flutter](https://posthog.com/docs/libraries/flutter)** - Dart and Flutter integration
+
+## Integration Platforms
+
+PostHog integrates with popular analytics and data platforms:
+
+- **[Segment](https://posthog.com/docs/libraries/segment)** - Send events via Segment CDP
+- **[RudderStack](https://posthog.com/docs/libraries/rudderstack)** - Customer data pipeline integration
+- **[Google Tag Manager](https://posthog.com/docs/libraries/google-tag-manager)** - Deploy via GTM
+- **[Sentry](https://posthog.com/docs/libraries/sentry)** - Error tracking integration
+
+## API
+
+For complete control or custom integrations, use the [PostHog API](https://posthog.com/docs/getting-started/install?tab=api) directly:
+
+```bash
+curl -v -L --header "Content-Type: application/json" -d '{
+  "api_key": "<ph_project_token>",
+  "event": "event_name",
+  "properties": {
+    "distinct_id": "user_id"
+  }
+}' https://us.i.posthog.com/capture/
+```
+
+## Choosing the Right SDK
+
+<Steps>
+  <Step title="Client-side vs Server-side">
+    Use **client-side SDKs** (JavaScript, React, Mobile) for user-facing applications where you want autocapture, session replay, and real-time user tracking.
+    
+    Use **server-side SDKs** (Python, Node, Ruby) for backend services, API endpoints, scheduled jobs, or when you need more control over what data is sent.
+  </Step>
+  
+  <Step title="Framework-specific vs Generic">
+    Choose framework-specific SDKs (React, Next.js, Django) when available for better integration with your framework's patterns and conventions.
+    
+    Use generic SDKs (JavaScript, Python, Node) for vanilla applications or when a framework-specific option doesn't exist.
+  </Step>
+  
+  <Step title="Feature Requirements">
+    All SDKs support:
+    - Event capture
+    - User identification
+    - Feature flags
+    
+    Additional features vary by SDK:
+    - **Session Replay**: JavaScript, React, Mobile SDKs
+    - **Autocapture**: JavaScript, React, Mobile SDKs
+    - **Surveys**: JavaScript, React SDKs
+  </Step>
+</Steps>
+
+## Getting Help
+
+If you need help choosing an SDK or have integration questions:
+
+- Check the [SDK-specific documentation](/integration/javascript)
+- Visit the [PostHog Community](https://posthog.com/community)
+- Review [example implementations](https://github.com/PostHog/posthog-js-lite/tree/main/examples)
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="JavaScript SDK" href="/integration/javascript">
+    Get started with the JavaScript SDK
+  </Card>
+  <Card title="Python SDK" href="/integration/python">
+    Install the Python SDK
+  </Card>
+  <Card title="React Integration" href="/integration/react">
+    Add PostHog to your React app
+  </Card>
+  <Card title="Mobile SDKs" href="/integration/mobile">
+    Integrate with iOS, Android, or Flutter
+  </Card>
+</CardGroup>

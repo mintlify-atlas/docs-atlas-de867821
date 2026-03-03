@@ -1,0 +1,352 @@
+---
+title: JavaScript SDK
+description: Complete guide to integrating PostHog with vanilla JavaScript and web applications
+---
+
+The PostHog JavaScript SDK provides powerful analytics, feature flags, session replay, and more for browser-based applications. It's the foundation for all web integrations and includes autocapture to automatically track user interactions.
+
+## Installation
+
+<Tabs>
+  <Tab title="npm">
+    ```bash
+    npm install posthog-js
+    ```
+  </Tab>
+  <Tab title="yarn">
+    ```bash
+    yarn add posthog-js
+    ```
+  </Tab>
+  <Tab title="pnpm">
+    ```bash
+    pnpm add posthog-js
+    ```
+  </Tab>
+  <Tab title="Script Tag">
+    Add the PostHog snippet to your `<head>` tag:
+    
+    ```html
+    <script>
+      !function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.async=!0,p.src=s.api_host.replace(".i.posthog.com","-assets.i.posthog.com")+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+".people (stub)"},o="init capture register register_once register_for_session unregister opt_out_capturing has_opted_out_capturing opt_in_capturing reset isFeatureEnabled getFeatureFlag getFeatureFlagPayload reloadFeatureFlags group identify setPersonProperties setPersonPropertiesForFlags resetPersonPropertiesForFlags setGroupPropertiesForFlags resetGroupPropertiesForFlags resetGroups onFeatureFlags addFeatureFlagsHandler onSessionId getSurveys getActiveMatchingSurveys renderSurvey canRenderSurvey getNextSurveyStep".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
+      posthog.init('<ph_project_token>', {
+        api_host: '<ph_client_api_host>',
+        defaults: '2026-01-30'
+      })
+    </script>
+    ```
+  </Tab>
+</Tabs>
+
+## Initialization
+
+<Steps>
+  <Step title="Import PostHog">
+    Import the PostHog library at the top of your application:
+    
+    ```javascript
+    import posthog from 'posthog-js'
+    ```
+  </Step>
+  
+  <Step title="Initialize with your credentials">
+    Call `posthog.init()` with your project token and host. You can find these in your [project settings](https://app.posthog.com/settings/project).
+    
+    ```javascript
+    posthog.init('<ph_project_token>', {
+      api_host: '<ph_client_api_host>',
+      defaults: '2026-01-30'
+    })
+    ```
+    
+    <Note>
+    The `defaults` option automatically configures PostHog with recommended settings. See [SDK defaults](https://posthog.com/docs/libraries/js#sdk-defaults) for details.
+    </Note>
+  </Step>
+  
+  <Step title="Verify installation">
+    Open your browser's developer console and check for PostHog logs, or visit your [Activity feed](https://app.posthog.com/activity/explore) to see events.
+  </Step>
+</Steps>
+
+## Capturing Events
+
+### Autocapture
+
+PostHog automatically captures clicks, form submissions, and pageviews without any additional code. Enable autocapture in your [project settings](https://app.posthog.com/settings/project-autocapture).
+
+### Custom Events
+
+Capture custom events with properties:
+
+```javascript
+posthog.capture('button_clicked', {
+  button_name: 'signup',
+  page: 'homepage'
+})
+```
+
+### Pageview Tracking
+
+Pageviews are tracked automatically. For single-page applications, you can manually trigger pageview events:
+
+```javascript
+posthog.capture('$pageview')
+```
+
+## Identifying Users
+
+### Identify Known Users
+
+When a user signs up or logs in, identify them with a unique ID:
+
+```javascript
+posthog.identify(
+  'user_123', // unique user ID
+  {
+    email: 'user@example.com',
+    name: 'Jane Doe',
+    plan: 'premium'
+  }
+)
+```
+
+<Note>
+Only call `identify()` when you know the user's identity. PostHog automatically tracks anonymous users before identification.
+</Note>
+
+### Set User Properties
+
+Update user properties at any time:
+
+```javascript
+posthog.setPersonProperties({
+  plan: 'enterprise',
+  last_login: new Date().toISOString()
+})
+```
+
+### Reset on Logout
+
+Reset the user identity when they log out:
+
+```javascript
+posthog.reset()
+```
+
+## Feature Flags
+
+### Check if a Flag is Enabled
+
+```javascript
+if (posthog.isFeatureEnabled('new-dashboard')) {
+  // Show new dashboard
+} else {
+  // Show old dashboard
+}
+```
+
+### Get Flag Value
+
+For multivariate flags:
+
+```javascript
+const variant = posthog.getFeatureFlag('experiment-button-color')
+
+if (variant === 'blue') {
+  // Show blue button
+} else if (variant === 'green') {
+  // Show green button
+}
+```
+
+### Get Flag Payload
+
+Retrieve JSON payloads attached to flags:
+
+```javascript
+const payload = posthog.getFeatureFlagPayload('experiment-config')
+console.log(payload) // { theme: 'dark', maxItems: 10 }
+```
+
+### Wait for Flags to Load
+
+```javascript
+posthog.onFeatureFlags(() => {
+  // Flags are loaded
+  if (posthog.isFeatureEnabled('new-feature')) {
+    // Safe to check flags
+  }
+})
+```
+
+## Group Analytics
+
+Track events for groups (companies, organizations, etc.):
+
+```javascript
+// Associate user with a group
+posthog.group('company', 'company_id_123', {
+  name: 'Acme Corporation',
+  plan: 'enterprise'
+})
+
+// Capture event for the group
+posthog.capture('feature_used', {
+  feature_name: 'advanced_analytics'
+})
+```
+
+## Session Replay
+
+Session replay is enabled by default. Configure it during initialization:
+
+```javascript
+posthog.init('<ph_project_token>', {
+  api_host: '<ph_client_api_host>',
+  session_recording: {
+    recordCrossOriginIframes: true,
+    maskAllInputs: false,
+    maskInputOptions: {
+      password: true
+    }
+  }
+})
+```
+
+### Privacy Controls
+
+Mask sensitive data:
+
+```html
+<!-- Mask specific elements -->
+<div class="ph-no-capture">Sensitive content</div>
+
+<!-- Mask all text but allow clicks -->
+<div class="ph-mask">This text will be hidden</div>
+```
+
+## Surveys
+
+Display surveys to collect user feedback:
+
+```javascript
+// Surveys show automatically based on targeting rules
+// Or trigger manually:
+posthog.getSurveys((surveys) => {
+  const survey = surveys[0]
+  if (survey) {
+    posthog.renderSurvey(survey.id)
+  }
+})
+```
+
+## Advanced Configuration
+
+<CodeGroup>
+```javascript Custom Configuration
+posthog.init('<ph_project_token>', {
+  api_host: '<ph_client_api_host>',
+  
+  // Autocapture settings
+  autocapture: {
+    dom_event_allowlist: ['click', 'change', 'submit'],
+    url_allowlist: ['example.com'],
+    element_allowlist: ['button', 'a']
+  },
+  
+  // Session recording
+  session_recording: {
+    recordCrossOriginIframes: true,
+    maskAllInputs: false
+  },
+  
+  // Persistence
+  persistence: 'localStorage', // or 'cookie', 'memory'
+  
+  // Privacy
+  respect_dnt: true,
+  opt_out_capturing_by_default: false,
+  
+  // Performance
+  loaded: (posthog) => {
+    console.log('PostHog loaded')
+  }
+})
+```
+
+```javascript Disable Features
+posthog.init('<ph_project_token>', {
+  api_host: '<ph_client_api_host>',
+  autocapture: false,
+  session_recording: {
+    enabled: false
+  },
+  disable_surveys: true
+})
+```
+</CodeGroup>
+
+## Debugging
+
+Enable debug mode to see detailed logs:
+
+```javascript
+posthog.init('<ph_project_token>', {
+  api_host: '<ph_client_api_host>',
+  debug: true
+})
+```
+
+Or enable it at runtime:
+
+```javascript
+posthog.debug()
+```
+
+## TypeScript Support
+
+The SDK includes TypeScript definitions:
+
+```typescript
+import posthog, { PostHog } from 'posthog-js'
+
+const client: PostHog = posthog.init('<ph_project_token>', {
+  api_host: '<ph_client_api_host>'
+})
+
+client.capture('event_name', {
+  property: 'value'
+})
+```
+
+## Best Practices
+
+<Note>
+**Performance**: PostHog loads asynchronously and won't block your page. Events are queued if the SDK hasn't loaded yet.
+</Note>
+
+<Note>
+**Privacy**: Always mask sensitive data like passwords, credit card numbers, and personal information using the `ph-no-capture` class.
+</Note>
+
+<Note>
+**Event Naming**: Use descriptive, consistent event names in snake_case like `button_clicked` or `checkout_completed`.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="React Integration" href="/integration/react">
+    Use PostHog with React hooks and components
+  </Card>
+  <Card title="Feature Flags" href="https://posthog.com/docs/feature-flags">
+    Learn more about feature flags
+  </Card>
+  <Card title="Session Replay" href="https://posthog.com/docs/session-replay">
+    Configure session recording
+  </Card>
+  <Card title="API Reference" href="https://posthog.com/docs/libraries/js">
+    Full JavaScript SDK documentation
+  </Card>
+</CardGroup>

@@ -1,0 +1,295 @@
+---
+title: Installation
+description: Get started with PostHog Cloud or deploy your own self-hosted instance.
+---
+
+# Installation
+
+PostHog offers two deployment options: PostHog Cloud (recommended) and self-hosted. Choose the option that best fits your needs.
+
+## PostHog Cloud (Recommended)
+
+PostHog Cloud is the fastest and easiest way to get started. We handle all infrastructure, scaling, and updates for you.
+
+### Benefits
+
+- **No infrastructure to manage**: We handle servers, scaling, and updates
+- **Generous free tier**: 1 million events per month included
+- **Always up-to-date**: Automatic updates with new features
+- **99.9% uptime SLA**: For paid plans
+- **EU and US regions**: Choose where your data is stored
+
+### Sign Up
+
+Choose the region closest to your users:
+
+<CardGroup cols={2}>
+  <Card title="PostHog Cloud US" icon="flag-usa" href="https://app.posthog.com/signup">
+    Data stored in the United States
+  </Card>
+  
+  <Card title="PostHog Cloud EU" icon="earth-europe" href="https://eu.posthog.com/signup">
+    Data stored in the European Union (Frankfurt)
+  </Card>
+</CardGroup>
+
+### Getting Started with Cloud
+
+<Steps>
+  <Step title="Create your account">
+    Sign up at [app.posthog.com/signup](https://app.posthog.com/signup) (US) or [eu.posthog.com/signup](https://eu.posthog.com/signup) (EU)
+  </Step>
+  
+  <Step title="Create your organization">
+    Set up your organization and first project
+  </Step>
+  
+  <Step title="Install a library">
+    Follow the onboarding to install a PostHog SDK in your app
+  </Step>
+  
+  <Step title="Verify installation">
+    Send a test event to confirm everything is working
+  </Step>
+</Steps>
+
+Once signed up, continue to the [Quickstart guide](/quickstart) to install a library.
+
+## Self-Hosted
+
+Deploy PostHog on your own infrastructure for complete control over your data.
+
+### When to Self-Host
+
+Consider self-hosting if you:
+
+- Need to keep all data on your own servers
+- Require air-gapped deployment
+- Have strict compliance requirements
+- Want to customize the PostHog codebase
+
+### Requirements
+
+Before deploying PostHog, ensure you have:
+
+**Minimum Requirements:**
+- 4 CPU cores
+- 8 GB RAM
+- 200 GB storage (grows with usage)
+- Docker and Docker Compose installed
+- A domain name (for SSL/HTTPS)
+
+**Recommended for Production:**
+- 8+ CPU cores
+- 16+ GB RAM
+- SSD storage for better performance
+- Regular backups configured
+- Monitoring and alerting set up
+
+### Docker Installation
+
+The recommended way to self-host PostHog is with Docker Compose.
+
+<Steps>
+  <Step title="Install Docker">
+    Install Docker and Docker Compose on your server:
+    
+    ```bash
+    # Ubuntu/Debian
+    curl -fsSL https://get.docker.com -o get-docker.sh
+    sh get-docker.sh
+    
+    # Install Docker Compose
+    sudo apt-get update
+    sudo apt-get install docker-compose-plugin
+    ```
+  </Step>
+  
+  <Step title="Clone the repository">
+    Download PostHog's deployment scripts:
+    
+    ```bash
+    git clone https://github.com/PostHog/posthog.git
+    cd posthog
+    ```
+  </Step>
+  
+  <Step title="Configure environment">
+    Copy the example environment file and update settings:
+    
+    ```bash
+    cp .env.example .env
+    ```
+    
+    Edit `.env` to set:
+    - `POSTHOG_SECRET`: A random secret key
+    - `DOMAIN`: Your domain name
+    - `POSTHOG_DB_PASSWORD`: Database password
+  </Step>
+  
+  <Step title="Start PostHog">
+    Launch all services with Docker Compose:
+    
+    ```bash
+    docker compose -f docker-compose.yml up -d
+    ```
+    
+    This will start:
+    - PostgreSQL (data storage)
+    - ClickHouse (analytics database)
+    - Redis (caching)
+    - PostHog application server
+    - Worker processes
+  </Step>
+  
+  <Step title="Set up SSL">
+    Configure HTTPS with Let's Encrypt:
+    
+    ```bash
+    ./bin/setup-ssl.sh yourdomain.com
+    ```
+  </Step>
+  
+  <Step title="Create admin account">
+    Access PostHog at `https://yourdomain.com` and create your admin account.
+  </Step>
+</Steps>
+
+### Kubernetes Deployment
+
+For larger deployments, use our Helm chart:
+
+```bash
+helm repo add posthog https://posthog.github.io/charts-clickhouse/
+helm repo update
+helm install posthog posthog/posthog --set cloud=private
+```
+
+See the [Kubernetes deployment guide](https://posthog.com/docs/self-host/deploy/kubernetes) for detailed instructions.
+
+### Configuration
+
+Key configuration options in your `.env` file:
+
+```bash
+# Secret key (generate a random string)
+POSTHOG_SECRET=your-secret-key-here
+
+# Domain name
+DOMAIN=posthog.yourdomain.com
+
+# Database settings
+POSTHOG_DB_PASSWORD=your-db-password
+POSTHOG_POSTGRES_HOST=postgres
+POSTHOG_POSTGRES_PORT=5432
+
+# ClickHouse settings
+CLICKHOUSE_HOST=clickhouse
+CLICKHOUSE_PASSWORD=your-clickhouse-password
+
+# Redis
+POSTHOG_REDIS_HOST=redis
+POSTHOG_REDIS_PORT=6379
+
+# Email (optional, for invites and notifications)
+EMAIL_HOST=smtp.example.com
+EMAIL_PORT=587
+EMAIL_USE_TLS=true
+EMAIL_HOST_USER=user@example.com
+EMAIL_HOST_PASSWORD=email-password
+```
+
+## Verify Installation
+
+After installation, verify PostHog is working:
+
+<Steps>
+  <Step title="Access the interface">
+    Open PostHog in your browser:
+    - Cloud: `https://app.posthog.com` or `https://eu.posthog.com`
+    - Self-hosted: `https://yourdomain.com`
+  </Step>
+  
+  <Step title="Check system status">
+    Navigate to Settings → System status to verify all services are running.
+  </Step>
+  
+  <Step title="Send a test event">
+    Install a library and send a test event to confirm event ingestion:
+    
+    ```javascript
+    posthog.capture('test_event', { property: 'value' })
+    ```
+  </Step>
+  
+  <Step title="Verify in activity">
+    Go to Activity to see your test event appear (may take a few seconds).
+  </Step>
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Install a library" icon="code" href="/integration/sdks">
+    Choose an SDK and integrate PostHog with your application
+  </Card>
+  
+  <Card title="Quickstart guide" icon="rocket" href="/quickstart">
+    Follow our quickstart to capture your first events
+  </Card>
+  
+  <Card title="Configure projects" icon="gear" href="/configuration/projects">
+    Set up projects, teams, and data ingestion settings
+  </Card>
+  
+  <Card title="Manage organizations" icon="users" href="/configuration/organizations">
+    Manage organization members and access controls
+  </Card>
+  
+  <Card title="Quickstart guide" icon="rocket" href="/quickstart">
+    Learn the basics of PostHog
+  </Card>
+  
+  <Card title="Configure ingestion" icon="gear" href="/configuration">
+    Set up event capture and filtering
+  </Card>
+  
+  <Card title="User permissions" icon="users" href="/user-management">
+    Add team members and manage access
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+### Self-Hosted Issues
+
+**Services won't start:**
+```bash
+# Check service logs
+docker compose logs -f
+
+# Restart services
+docker compose restart
+```
+
+**Out of memory errors:**
+- Increase RAM allocation (minimum 8 GB recommended)
+- Reduce ClickHouse cache settings in `docker-compose.yml`
+
+**Events not appearing:**
+- Check worker logs: `docker compose logs worker`
+- Verify ClickHouse is running: `docker compose ps clickhouse`
+- Check network connectivity between services
+
+**Database migration failures:**
+```bash
+# Run migrations manually
+docker compose run web python manage.py migrate
+```
+
+### Getting Help
+
+- **Documentation**: [Self-hosting docs](https://posthog.com/docs/self-host)
+- **Community**: [Slack community](https://posthog.com/slack)
+- **GitHub**: [Report issues](https://github.com/PostHog/posthog/issues)
+- **Support**: Email [hey@posthog.com](mailto:hey@posthog.com)

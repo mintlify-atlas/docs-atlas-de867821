@@ -1,0 +1,419 @@
+---
+title: Authentication Methods and SSO
+description: Configure authentication, enable SSO providers, set up SAML, and enforce two-factor authentication in PostHog
+---
+
+# Authentication Methods and SSO
+
+PostHog supports multiple authentication methods including password-based login, social SSO, SAML, and two-factor authentication. This guide covers setup and configuration for each method.
+
+## Authentication Methods
+
+PostHog implements several authentication backends (`posthog/auth.py`):
+
+- **Password Authentication** - Traditional email/password login
+- **Personal API Keys** - For programmatic access
+- **OAuth/Social SSO** - Google, GitHub, GitLab, etc.
+- **SAML** - Enterprise SSO (domain-based)
+- **WebAuthn/Passkeys** - Passwordless authentication
+- **Project Secret Keys** - Server-side feature flag evaluation
+
+## Password Authentication
+
+### Standard Login Flow
+
+Password authentication uses Django's authentication backend with additional security layers:
+
+```python
+# From posthog/api/authentication.py:172-337
+# 1. Check SSO enforcement
+# 2. Validate credentials
+# 3. Check email verification (if enabled)
+# 4. Enforce 2FA if required
+# 5. Create session
+```
+
+### Password Requirements
+
+PostHog uses the `zxcvbn` library for password strength validation (`posthog/auth.py:111-128`):
+
+- Minimum score of 3 out of 4
+- Rejects common passwords
+- Provides feedback for weak passwords
+- No hard character requirements (length, symbols, etc.)
+
+<Info>
+  Password validation happens client-side during signup and server-side on password changes.
+</Info>
+
+### Password Reset
+
+Self-service password reset flow:
+
+<Steps>
+  <Step title="Request Reset">
+    User enters email at `/reset`
+  </Step>
+  
+  <Step title="Email Sent">
+    Token generated and emailed (valid for 24 hours)
+  </Step>
+  
+  <Step title="Set New Password">
+    User clicks link and sets new password
+  </Step>
+  
+  <Step title="Token Invalidated">
+    Old password and token become invalid
+  </Step>
+</Steps>
+
+Implementation at `posthog/api/authentication.py:808-888`.
+
+<Note>
+  Password reset is disabled for domains with SSO enforcement. Users see an error message directing them to SSO login.
+</Note>
+
+## Personal API Keys
+
+Personal API keys provide programmatic access to the PostHog API.
+
+### Creating API Keys
+
+1. Go to **Personal settings → API keys**
+2. Click **Create personal API key**
+3. Set label and optional scopes
+4. Copy the key (shown once)
+
+### Using API Keys
+
+Three authentication methods (`posthog/auth.py:159-196`):
+
+```bash
+# 1. Authorization header (recommended)
+curl -H "Authorization: Bearer phx_YOUR_KEY" \
+  https://app.posthog.com/api/projects/
+
+# 2. Request body
+curl -X POST https://app.posthog.com/api/endpoint/ \
+  -d '{"personal_api_key": "phx_YOUR_KEY"}'
+
+# 3. Query parameter (not recommended)
+curl https://app.posthog.com/api/projects/?personal_api_key=phx_YOUR_KEY
+```
+
+<Warning>
+  Query parameter authentication is tracked separately and may be deprecated. Use the Authorization header instead.
+</Warning>
+
+### API Key Security
+
+Keys are hashed using SHA-256 before storage (`posthog/models/personal_api_key.py`):
+
+```python
+# Key format: phx_<random_string>
+# Stored as: sha256(key)
+# Legacy keys automatically upgraded on use
+```
+
+Key features:
+- Organization scoping (optional)
+- Last used tracking
+- Automatic expiration after 1 year of inactivity
+
+### Restricting API Key Usage
+
+Organization admins can disable personal API keys:
+
+1. Go to **Organization settings → Security**
+2. Toggle **Members can use personal API keys**
+3. Existing keys are immediately invalidated
+
+Requires the `ORGANIZATION_SECURITY_SETTINGS` feature.
+
+## Two-Factor Authentication (2FA)
+
+### Enabling 2FA for Users
+
+Users can enable 2FA via TOTP or passkeys:
+
+<Steps>
+  <Step title="Navigate to 2FA Settings">
+    Go to **Personal settings → Two-factor authentication**
+  </Step>
+  
+  <Step title="Choose Method">
+    Select TOTP (authenticator app) or Passkey
+  </Step>
+  
+  <Step title="Complete Setup">
+    - **TOTP**: Scan QR code with authenticator app
+    - **Passkey**: Follow browser prompts to register device
+  </Step>
+  
+  <Step title="Save Backup Codes">
+    Store backup codes in a secure location
+  </Step>
+</Steps>
+
+### TOTP (Authenticator Apps)
+
+Supported apps:
+- Google Authenticator
+- Authy
+- 1Password
+- Any TOTP-compatible app
+
+Implementation uses `django-otp` library with 30-second time windows.
+
+### Passkeys (WebAuthn)
+
+Passkeys provide passwordless authentication:
+
+- Biometric authentication (Face ID, Touch ID, Windows Hello)
+- Hardware security keys (YubiKey, etc.)
+- Platform authenticators (built into devices)
+
+WebAuthn implementation at `posthog/auth.py:737-838` and `posthog/passkey.py`.
+
+<Info>
+  Passkeys can be used for both primary login and 2FA verification. Users control this via the `passkeys_enabled_for_2fa` setting.
+</Info>
+
+### Enforcing 2FA Organization-Wide
+
+Organization admins can require 2FA for all members:
+
+1. Go to **Organization settings → Security**
+2. Enable **Enforce two-factor authentication**
+3. Members without 2FA are prompted to set it up
+
+```python
+# Enforcement at posthog/helpers/two_factor_session.py
+if organization.enforce_2fa and not user_has_2fa:
+    raise TwoFactorSetupRequired()
+```
+
+Requires the `TWO_FACTOR_ENFORCEMENT` feature flag.
+
+### 2FA Recovery
+
+If users lose access to their 2FA device:
+
+1. Use backup codes (generated during setup)
+2. Contact organization admin for reset
+3. Admins can reset 2FA at `/api/users/{id}/two_factor_reset/`
+
+<Warning>
+  Backup codes are single-use. Each code is deleted after use and an email notification is sent.
+</Warning>
+
+### Email MFA (Fallback)
+
+For users without TOTP or passkeys, PostHog sends a verification link via email:
+
+```python
+# From posthog/api/authentication.py:306-316
+if not totp_device and not passkeys_enabled:
+    email_mfa_verifier.create_token_and_send_email_mfa_verification(request, user)
+    raise EmailMFARequired(user.email)
+```
+
+Email MFA links:
+- Valid for 15 minutes
+- Single-use tokens
+- Rate-limited to prevent abuse
+
+## Social SSO (OAuth)
+
+PostHog supports OAuth providers:
+
+- Google
+- GitHub  
+- GitLab
+- Custom OAuth2 providers
+
+### Enabling SSO Providers
+
+For self-hosted instances, configure via environment variables:
+
+```bash
+# Google OAuth
+SOCIAL_AUTH_GOOGLE_OAUTH2_KEY=your_client_id
+SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET=your_client_secret
+
+# GitHub OAuth
+SOCIAL_AUTH_GITHUB_KEY=your_client_id
+SOCIAL_AUTH_GITHUB_SECRET=your_client_secret
+
+# GitLab OAuth
+SOCIAL_AUTH_GITLAB_KEY=your_application_id
+SOCIAL_AUTH_GITLAB_SECRET=your_secret
+SOCIAL_AUTH_GITLAB_API_URL=https://gitlab.com  # or self-hosted URL
+```
+
+### SSO Login Flow
+
+1. User clicks "Continue with Google" (or other provider)
+2. Redirected to provider's authorization page
+3. User approves access
+4. Redirected back to PostHog with auth code
+5. PostHog exchanges code for user info
+6. Account created or matched by email
+7. User logged in
+
+Implementation at `posthog/api/authentication.py:141-153`.
+
+### SSO Account Linking
+
+Users can link multiple SSO providers to one account:
+
+- Email must match across providers
+- First login with email creates the account
+- Subsequent SSO logins link to existing account
+- Users can unlink providers in settings
+
+## SAML Authentication
+
+SAML provides enterprise SSO at the domain level.
+
+### SAML Configuration
+
+SAML is configured per organization domain (not instance-wide):
+
+1. Go to **Organization settings → Authentication domains**
+2. Add your domain (e.g., `company.com`)
+3. Upload IdP metadata XML or enter details manually:
+   - SSO URL
+   - Entity ID
+   - X.509 Certificate
+4. Configure attribute mapping
+5. Test the integration
+
+<Note>
+  SAML requires the enterprise license (`EE_AVAILABLE`). The feature is domain-based, allowing different SAML configs for different email domains.
+</Note>
+
+### SAML Enforcement
+
+Organization domains can enforce SAML login:
+
+```python
+# From posthog/api/authentication.py:224-230
+sso_enforcement = OrganizationDomain.objects.get_sso_enforcement_for_email_address(email)
+if sso_enforcement == 'saml':
+    # Block password login
+    # Block other SSO providers
+    # Only allow SAML login
+```
+
+When SAML is enforced:
+- Password login disabled for that domain
+- OAuth login disabled
+- Password reset disabled
+- Users redirected to SAML login
+
+### SAML Attribute Mapping
+
+Map SAML attributes to PostHog user fields:
+
+```python
+# Default mappings
+SAML_ATTR_MAP = {
+    'email': 'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress',
+    'first_name': 'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname',
+    'last_name': 'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname',
+}
+```
+
+Customize in organization domain settings.
+
+## Session Management
+
+### Session Duration
+
+Default session settings:
+
+```python
+SESSION_COOKIE_AGE = 90 * 24 * 60 * 60  # 90 days
+SESSION_COOKIE_SECURE = True  # HTTPS only
+SESSION_COOKIE_HTTPONLY = True  # No JavaScript access
+SESSION_COOKIE_SAMESITE = 'Lax'  # CSRF protection
+```
+
+Organizations can customize session age:
+
+```python
+organization.session_cookie_age = 7 * 24 * 60 * 60  # 7 days
+```
+
+### Remember Device (2FA)
+
+2FA can be skipped on trusted devices:
+
+```python
+# Cookie set after successful 2FA (posthog/api/authentication.py:426-438)
+max_age = settings.TWO_FACTOR_REMEMBER_COOKIE_AGE  # 30 days
+response.set_cookie(
+    f"remember_device_{device_id}",
+    cookie_value,
+    max_age=max_age,
+    secure=True,
+    httponly=True,
+    samesite='Strict'
+)
+```
+
+Users can clear trusted devices in settings.
+
+### Session Expiration
+
+2FA sessions expire after inactivity:
+
+```python
+# From posthog/helpers/two_factor_session.py
+TWO_FACTOR_LOGIN_TIMEOUT = 600  # 10 minutes
+
+if time.time() > auth_time + TWO_FACTOR_LOGIN_TIMEOUT:
+    raise ValidationError("Login attempt expired. Re-enter credentials.")
+```
+
+## Security Features
+
+### Rate Limiting
+
+Authentication endpoints are rate-limited:
+
+- Login: Handled by `django-axes` (5 attempts per 30 minutes)
+- Password reset: `UserPasswordResetThrottle` (3 per hour)
+- 2FA verification: `TwoFactorThrottle` (10 per minute)
+- Email MFA: `EmailMFAThrottle` (5 per hour)
+
+### Account Lockout
+
+After failed login attempts:
+
+```python
+# From settings
+AXES_FAILURE_LIMIT = 5
+AXES_COOLOFF_TIME = timedelta(minutes=30)
+```
+
+Locked users see:
+> "Too many failed login attempts. Please try again in 30 minutes."
+
+### Login Notifications
+
+Users receive email notifications for:
+- New device login
+- Backup code usage
+- Password reset
+- SSO account linking
+
+Implementation at `posthog/tasks/email.py:login_from_new_device_notification`.
+
+## Related Resources
+
+- [Managing Organizations](/configuration/organizations)
+- [Project Settings](/configuration/projects) 
+- [Self-Hosting Setup](/configuration/self-hosting)

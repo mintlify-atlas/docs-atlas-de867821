@@ -1,0 +1,245 @@
+---
+title: Managing Organizations and Teams
+description: Configure organizations, manage members, set permissions, and control team access in PostHog
+---
+
+# Managing Organizations and Teams
+
+Organizations are the top-level entity in PostHog, containing projects, teams, and members. This guide covers organization setup, member management, and permission controls.
+
+## Organization Structure
+
+Each organization can have:
+- Multiple projects (teams) for different products or environments
+- Members with different permission levels
+- Shared billing and security settings
+- Custom branding (logo, domain configuration)
+
+### Organization Membership Levels
+
+PostHog supports four membership levels defined in `posthog/models/organization.py:99-104`:
+
+- **Owner** - Full administrative control, can delete organization
+- **Admin** - Can manage members, settings, and projects
+- **Member** - Can access projects and use features
+- **Read-only** - View-only access to data
+
+## Creating an Organization
+
+Organizations are created automatically during signup. To create additional organizations:
+
+<Steps>
+  <Step title="Navigate to Settings">
+    Click your profile icon and select "Organization settings"
+  </Step>
+  
+  <Step title="Create New Organization">
+    Click "Create organization" and provide a name
+  </Step>
+  
+  <Step title="Configure Settings">
+    Set up your organization's basic information and security settings
+  </Step>
+</Steps>
+
+<Note>
+  On self-hosted instances without a premium license, you're limited to one organization. PostHog Cloud supports multiple organizations on paid plans.
+</Note>
+
+## Member Management
+
+### Inviting Members
+
+Organization admins can invite new members:
+
+1. Go to **Organization settings → Members**
+2. Click **Invite member**
+3. Enter email address and select role
+4. Member receives an invitation email valid for 3 days
+
+<Info>
+  The `members_can_invite` setting (`posthog/api/organization.py:113`) controls whether regular members can send invites. This requires the `ORGANIZATION_INVITE_SETTINGS` feature.
+</Info>
+
+### Changing Member Roles
+
+To update a member's role:
+
+1. Navigate to **Organization settings → Members**
+2. Find the member and click the role dropdown
+3. Select the new role
+4. Changes take effect immediately
+
+<Warning>
+  Organizations must have at least one Owner. You cannot downgrade the last Owner without first promoting another member.
+</Warning>
+
+### Removing Members
+
+Admins and Owners can remove members:
+
+1. Go to **Organization settings → Members**
+2. Click the menu next to the member
+3. Select **Remove from organization**
+4. Confirm the action
+
+When a member is removed:
+- They lose access to all projects in the organization
+- Their personal API keys are invalidated for this organization
+- Activity logs record the removal (`posthog/api/organization.py:490-510`)
+
+## Organization Settings
+
+### General Settings
+
+Available in `posthog/api/organization.py:97-123`:
+
+- **Name** - Organization display name
+- **Slug** - URL-friendly identifier (auto-generated)
+- **Logo** - Custom branding image
+- **Default role** - Automatically assigned to new members
+
+### Security Settings
+
+Configure organization-wide security policies:
+
+<Accordion title="Two-Factor Authentication (2FA)">
+  **Enforce 2FA** (`enforce_2fa` field)
+  
+  Require all members to enable 2FA before accessing the organization.
+  
+  ```python
+  # Validation at posthog/api/organization.py:198-205
+  if not organization.is_feature_available(AvailableFeature.TWO_FACTOR_ENFORCEMENT):
+      raise ValidationError("You must upgrade your plan to enforce 2FA.")
+  ```
+  
+  Requires the `TWO_FACTOR_ENFORCEMENT` feature flag.
+</Accordion>
+
+<Accordion title="Personal API Keys">
+  **Members can use personal API keys** (`members_can_use_personal_api_keys`)
+  
+  Control whether members can create and use personal API keys.
+  
+  - Set to `true` - Members can generate personal API keys
+  - Set to `false` - Only admins can use API keys
+  
+  This setting requires the `ORGANIZATION_SECURITY_SETTINGS` feature.
+</Accordion>
+
+<Accordion title="Public Sharing">
+  **Allow publicly shared resources** (`allow_publicly_shared_resources`)
+  
+  Enable or disable public sharing of insights and dashboards.
+  
+  When disabled:
+  - Members cannot create public share links
+  - Existing public links are deactivated
+  - Validation enforced at `posthog/api/organization.py:207-214`
+</Accordion>
+
+## Team and Project Access
+
+### Viewing Teams
+
+Organizations contain multiple teams (projects). Members see teams based on their access level:
+
+```python
+# From posthog/api/organization.py:167-178
+visible_teams = user_access_control.filter_queryset_by_access_level(
+    organization.teams.all(), 
+    include_all_if_admin=True
+)
+```
+
+### Team-Level Permissions
+
+Individual projects can have restricted access:
+
+- Admins see all teams by default
+- Members see only teams they're explicitly added to
+- Access control enforced via `user_permissions.team_ids_visible_for_user`
+
+## Organization Deletion
+
+<Warning>
+  Deleting an organization is permanent and cannot be undone. All projects, data, and team members are removed.
+</Warning>
+
+To delete an organization:
+
+<Steps>
+  <Step title="Cancel Active Subscriptions">
+    On PostHog Cloud, cancel any active billing subscriptions first (enforced at `posthog/api/organization.py:326-330`)
+  </Step>
+  
+  <Step title="Navigate to Settings">
+    Go to **Organization settings → Danger zone**
+  </Step>
+  
+  <Step title="Initiate Deletion">
+    Click **Delete organization** and confirm
+  </Step>
+  
+  <Step title="Background Processing">
+    Organization data is queued for deletion via background task (`delete_organization_data_and_notify_task`)
+  </Step>
+</Steps>
+
+What gets deleted:
+- All projects and teams
+- Event data from ClickHouse
+- PostgreSQL records
+- Batch exports
+- Members receive email notifications
+
+## Advanced Configuration
+
+### IP Anonymization
+
+Set default IP anonymization for new projects:
+
+```python
+# Default behavior (posthog/models/organization.py:113-115)
+default_anonymize_ips = True if settings.CLOUD_DEPLOYMENT == "EU" else False
+```
+
+EU cloud deployments enable IP anonymization by default for GDPR compliance.
+
+### Session Cookie Age
+
+Customize session expiration:
+
+```python
+session_cookie_age = 86400  # 24 hours in seconds
+```
+
+If not set, uses the global `SESSION_COOKIE_AGE` setting.
+
+### AI Data Processing
+
+Control whether organization data can be used for AI features:
+
+```python
+is_ai_data_processing_approved = True  # or False
+```
+
+Members can opt-in/out for features like AI session summaries.
+
+## Activity Logging
+
+All organization changes are tracked in activity logs (`posthog/api/organization.py:428-444`):
+
+- Organization created/updated/deleted
+- Member added/removed/role changed
+- Invitations sent/accepted/cancelled
+- Settings modified
+
+Access logs via **Organization settings → Activity**.
+
+## Related Resources
+
+- [Project Configuration](/configuration/projects)
+- [Authentication Methods](/configuration/authentication)
+- [Self-Hosting Setup](/configuration/self-hosting)

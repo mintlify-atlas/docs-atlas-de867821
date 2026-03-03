@@ -1,0 +1,301 @@
+---
+title: Query Events
+description: Execute queries to analyze and retrieve event data
+---
+
+The Query endpoint provides a powerful interface for analyzing event data using PostHog's query language. This is the recommended way to retrieve and analyze events programmatically.
+
+## Endpoint
+
+```
+POST /api/projects/:project_id/query
+```
+
+## Authentication
+
+Use a Personal API Key in the `Authorization` header:
+
+```
+Authorization: Bearer <your_personal_api_key>
+```
+
+## Request Parameters
+
+<ParamField path="project_id" type="string" required>
+  The ID of your PostHog project. Found in your project settings.
+</ParamField>
+
+## Request Body
+
+<ParamField path="query" type="object" required>
+  The query object defining what data to retrieve. The structure depends on the query type.
+  
+  Supported query types:
+  - `HogQLQuery` - SQL-like queries using HogQL
+  - `EventsQuery` - Structured event queries
+  - `TrendsQuery` - Time-series analysis
+  - `FunnelsQuery` - Funnel analysis
+  - `RetentionQuery` - Retention analysis
+  - `PathsQuery` - User path analysis
+</ParamField>
+
+<ParamField path="refresh" type="string" default="blocking">
+  Controls query execution and caching behavior:
+  
+  - `blocking` - Wait for fresh results, use cache if fresh
+  - `async` - Return cached results immediately, refresh in background
+  - `force_blocking` - Always calculate fresh results
+  - `force_async` - Always return cached results, refresh in background
+  - `lazy_async` - Use cache, only calculate if cache is missing
+</ParamField>
+
+<ParamField path="client_query_id" type="string">
+  Optional identifier to track this specific query. Used for monitoring and cancellation.
+</ParamField>
+
+<ParamField path="filters_override" type="object">
+  Dashboard filters to apply to the query. Used when executing queries in a dashboard context.
+</ParamField>
+
+<ParamField path="variables_override" type="object">
+  Variable values to override in the query. Allows parameterized queries.
+</ParamField>
+
+## Response
+
+The response structure varies based on the query type.
+
+<ResponseField name="results" type="array">
+  Query results. Structure depends on the query type.
+</ResponseField>
+
+<ResponseField name="query_status" type="object">
+  Information about query execution status.
+  
+  <ResponseField name="complete" type="boolean">
+    Whether the query has completed execution.
+  </ResponseField>
+  
+  <ResponseField name="error" type="boolean">
+    Whether an error occurred during execution.
+  </ResponseField>
+  
+  <ResponseField name="error_message" type="string">
+    Error message if an error occurred.
+  </ResponseField>
+</ResponseField>
+
+<ResponseField name="columns" type="array">
+  Column names for the query results.
+</ResponseField>
+
+<ResponseField name="types" type="array">
+  Data types for each column.
+</ResponseField>
+
+## Examples
+
+<CodeGroup>
+
+```bash HogQL Query - Recent Events
+curl -X POST https://app.posthog.com/api/projects/12345/query \
+  -H "Authorization: Bearer <your_personal_api_key>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": {
+      "kind": "HogQLQuery",
+      "query": "SELECT event, timestamp, distinct_id, properties FROM events WHERE timestamp > now() - INTERVAL 1 DAY LIMIT 100"
+    }
+  }'
+```
+
+```bash Events Query - Structured
+curl -X POST https://app.posthog.com/api/projects/12345/query \
+  -H "Authorization: Bearer <your_personal_api_key>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": {
+      "kind": "EventsQuery",
+      "select": ["event", "timestamp", "distinct_id", "properties"],
+      "event": "button_clicked",
+      "after": "2024-03-01",
+      "limit": 100
+    }
+  }'
+```
+
+```bash Query with Filters
+curl -X POST https://app.posthog.com/api/projects/12345/query \
+  -H "Authorization: Bearer <your_personal_api_key>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": {
+      "kind": "HogQLQuery",
+      "query": "SELECT event, count() as count FROM events WHERE timestamp > now() - INTERVAL 7 DAYS GROUP BY event ORDER BY count DESC"
+    },
+    "refresh": "blocking"
+  }'
+```
+
+```bash Async Query
+curl -X POST https://app.posthog.com/api/projects/12345/query \
+  -H "Authorization: Bearer <your_personal_api_key>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": {
+      "kind": "HogQLQuery",
+      "query": "SELECT * FROM events WHERE timestamp > now() - INTERVAL 30 DAYS"
+    },
+    "refresh": "async",
+    "client_query_id": "my_large_query_123"
+  }'
+```
+
+```python Python Example
+import requests
+
+url = "https://app.posthog.com/api/projects/12345/query"
+headers = {
+    "Authorization": "Bearer <your_personal_api_key>",
+    "Content-Type": "application/json"
+}
+data = {
+    "query": {
+        "kind": "HogQLQuery",
+        "query": "SELECT event, count() as count FROM events WHERE timestamp > now() - INTERVAL 1 DAY GROUP BY event"
+    }
+}
+
+response = requests.post(url, headers=headers, json=data)
+result = response.json()
+
+for row in result["results"]:
+    print(f"{row[0]}: {row[1]} events")
+```
+
+</CodeGroup>
+
+## HogQL Query Language
+
+HogQL is PostHog's SQL-like query language that provides powerful event analysis capabilities.
+
+### Basic Syntax
+
+```sql
+SELECT column1, column2, aggregate_function(column3)
+FROM events
+WHERE conditions
+GROUP BY column1, column2
+ORDER BY column1
+LIMIT 100
+```
+
+### Available Tables
+
+- `events` - All captured events
+- `persons` - Person records
+- `person_distinct_ids` - Mapping of distinct IDs to persons
+- `sessions` - Session data
+- `cohorts` - User cohorts
+
+### Common Functions
+
+- `count()` - Count rows
+- `countDistinct(column)` - Count unique values
+- `avg(column)` - Average value
+- `sum(column)` - Sum values
+- `min(column)`, `max(column)` - Min/max values
+- `toDate(timestamp)` - Convert to date
+- `dateDiff('day', date1, date2)` - Date difference
+
+### Event Properties
+
+Access event properties using dot notation:
+
+```sql
+SELECT properties.button_name, count() 
+FROM events 
+WHERE event = 'button_clicked'
+GROUP BY properties.button_name
+```
+
+## Query Status
+
+For async queries, check the query status using:
+
+```
+GET /api/projects/:project_id/query/:query_id
+```
+
+Response:
+
+```json
+{
+  "query_status": {
+    "complete": false,
+    "error": false,
+    "progress": 0.45
+  }
+}
+```
+
+## Canceling Queries
+
+Cancel a running query:
+
+```bash
+curl -X DELETE https://app.posthog.com/api/projects/12345/query/my_query_id \
+  -H "Authorization: Bearer <your_personal_api_key>"
+```
+
+## Rate Limits
+
+Query endpoint rate limits:
+- **Burst**: 20 requests per 10 seconds
+- **Sustained**: 100 requests per hour
+- **HogQL specific**: Additional limits based on query complexity
+
+<Note>
+  Rate limits are higher for teams with paid plans. Contact support for enterprise limits.
+</Note>
+
+## Best Practices
+
+1. **Use time filters**: Always filter by timestamp to limit data scanned
+2. **Limit results**: Use `LIMIT` to avoid retrieving excessive data
+3. **Use async for large queries**: Set `refresh: "async"` for queries that may take time
+4. **Cache when possible**: Use `refresh: "blocking"` to benefit from query caching
+5. **Monitor query performance**: Use `client_query_id` to track query execution
+6. **Aggregate at query time**: Use `GROUP BY` and aggregations to reduce data transfer
+
+## Error Handling
+
+Common error scenarios:
+
+- **400 Bad Request**: Invalid query syntax or parameters
+- **401 Unauthorized**: Invalid or missing API key
+- **403 Forbidden**: Insufficient permissions
+- **429 Too Many Requests**: Rate limit exceeded
+- **500 Internal Server Error**: Query execution error
+
+<CodeGroup>
+
+```python Error Handling
+try:
+    response = requests.post(url, headers=headers, json=data)
+    response.raise_for_status()
+    result = response.json()
+    
+    if result.get("query_status", {}).get("error"):
+        error_msg = result["query_status"].get("error_message")
+        print(f"Query error: {error_msg}")
+    else:
+        # Process results
+        pass
+except requests.exceptions.HTTPError as e:
+    print(f"HTTP error: {e}")
+except requests.exceptions.RequestException as e:
+    print(f"Request failed: {e}")
+```
+
+</CodeGroup>

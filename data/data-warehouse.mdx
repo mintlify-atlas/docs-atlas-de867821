@@ -1,0 +1,464 @@
+---
+title: Data Warehouse
+description: Query external data sources with SQL and build unified data models across your stack
+---
+
+PostHog's Data Warehouse lets you sync external data sources, query them with SQL, and join them with your product analytics data. Build unified views across your entire data stack without copying data to separate warehouses.
+
+## Overview
+
+The Data Warehouse provides:
+
+- **External data syncing** - Connect to databases, SaaS tools, and data warehouses
+- **SQL querying** - Use HogQL to query external tables alongside PostHog events
+- **Saved queries and views** - Create reusable data models and materialized views
+- **Real-time joins** - Combine external data with product analytics
+- **Usage tracking** - Monitor rows synced and materialized
+
+## Supported Data Sources
+
+Connect to databases, SaaS platforms, and data warehouses:
+
+<CodeGroup>
+
+```python Stripe
+from posthog import Posthog
+
+posthog = Posthog('<ph_project_api_key>')
+
+# Stripe data automatically syncs customers, invoices, and charges
+# Auto-creates joins between persons and Stripe customers
+```
+
+```python PostgreSQL
+{
+  "source_type": "Postgres",
+  "host": "db.example.com",
+  "port": 5432,
+  "database": "analytics",
+  "user": "readonly_user",
+  "password": "***",
+  "schemas": [
+    {
+      "name": "users",
+      "should_sync": true,
+      "sync_type": "incremental",
+      "incremental_field": "updated_at",
+      "incremental_field_type": "timestamp"
+    }
+  ]
+}
+```
+
+```python Snowflake
+{
+  "source_type": "Snowflake",
+  "account_id": "xy12345.us-east-1",
+  "warehouse": "COMPUTE_WH",
+  "database": "ANALYTICS_DB",
+  "schema": "PUBLIC",
+  "user": "posthog_user",
+  "role": "READONLY",
+  "schemas": [
+    {
+      "name": "dim_users",
+      "should_sync": true,
+      "sync_type": "full"
+    }
+  ]
+}
+```
+
+```python BigQuery
+{
+  "source_type": "BigQuery",
+  "dataset_id": "analytics_dataset",
+  "project_id": "my-gcp-project",
+  "service_account_json": {...},
+  "schemas": [
+    {
+      "name": "events_raw",
+      "should_sync": true,
+      "sync_type": "append",
+      "incremental_field": "timestamp"
+    }
+  ]
+}
+```
+
+</CodeGroup>
+
+## Sync Configuration
+
+### Incremental Syncing
+
+Use incremental syncing to only sync new or updated rows:
+
+```python
+{
+  "name": "orders",
+  "sync_type": "incremental",
+  "incremental_field": "updated_at",
+  "incremental_field_type": "timestamp",
+  "sync_time_of_day": "02:00"
+}
+```
+
+<Note>
+  **Incremental fields** - Must be monotonically increasing (timestamp, integer ID)
+  and present on every row for reliable syncing.
+</Note>
+
+### Full Table Syncs
+
+For smaller tables or when you need complete refreshes:
+
+```python
+{
+  "name": "products",
+  "sync_type": "full",
+  "sync_time_of_day": "03:00"
+}
+```
+
+### Append-Only Syncs
+
+For event streams and immutable logs:
+
+```python
+{
+  "name": "activity_logs",
+  "sync_type": "append",
+  "incremental_field": "event_timestamp",
+  "incremental_field_type": "timestamp"
+}
+```
+
+## Querying External Data
+
+### Basic SQL Queries
+
+Query external tables using HogQL:
+
+```sql
+SELECT 
+  customer_email,
+  sum(amount_paid) as total_revenue,
+  count(*) as invoice_count
+FROM stripe_invoice
+WHERE status = 'paid'
+  AND created >= now() - INTERVAL 30 DAY
+GROUP BY customer_email
+ORDER BY total_revenue DESC
+LIMIT 100
+```
+
+### Joining with Product Data
+
+Combine external data with PostHog events:
+
+```sql
+SELECT 
+  persons.properties.email,
+  stripe_customer.name,
+  stripe_customer.created as customer_since,
+  count(DISTINCT events.uuid) as event_count
+FROM events
+JOIN persons ON events.person_id = persons.id
+JOIN stripe_customer ON persons.properties.email = stripe_customer.email
+WHERE events.timestamp >= now() - INTERVAL 7 DAY
+GROUP BY persons.properties.email, stripe_customer.name, stripe_customer.created
+```
+
+## Saved Queries and Views
+
+### Creating Views
+
+Save reusable queries as views:
+
+```python
+from posthog.api import DataWarehouseSavedQuery
+
+view = DataWarehouseSavedQuery.objects.create(
+    team_id=team.id,
+    name="active_customers",
+    query={
+        "query": """
+            SELECT 
+                c.email,
+                c.created,
+                count(DISTINCT e.uuid) as events_30d
+            FROM stripe_customer c
+            LEFT JOIN persons p ON c.email = p.properties.email
+            LEFT JOIN events e ON p.id = e.person_id 
+                AND e.timestamp >= now() - INTERVAL 30 DAY
+            GROUP BY c.email, c.created
+            HAVING events_30d > 0
+        """
+    },
+    created_by=user
+)
+```
+
+### Materialized Views
+
+Enable materialization for faster queries on large datasets:
+
+<Steps>
+
+<Step title="Create the view">
+First create a standard saved query with your SQL logic.
+</Step>
+
+<Step title="Enable materialization">
+```python
+view.is_materialized = True
+view.sync_frequency_interval = "24hour"  # Refresh daily
+view.save()
+view.schedule_materialization()
+```
+</Step>
+
+<Step title="Query materialized table">
+Once materialized, query the view like any table:
+```sql
+SELECT * FROM active_customers
+WHERE events_30d > 100
+```
+</Step>
+
+</Steps>
+
+<Info>
+  Materialized views are refreshed on schedule and stored as ClickHouse tables.
+  They're ideal for complex aggregations that power dashboards.
+</Info>
+
+## Schema Management
+
+### Refreshing Schemas
+
+Fetch the latest table list from a source:
+
+```python
+from products.data_warehouse.backend.api.external_data_source import ExternalDataSourceViewSet
+
+# Refresh schemas from source
+response = client.post(
+    f'/api/projects/{project_id}/warehouse_sources/{source_id}/refresh_schemas/'
+)
+
+# Returns: {"added": 3, "deleted": 1}
+```
+
+### Managing Table Prefixes
+
+Use prefixes when connecting multiple instances of the same source:
+
+```python
+{
+  "source_type": "Postgres",
+  "prefix": "prod_",  # Tables appear as prod_users, prod_orders, etc.
+  "host": "prod-db.example.com",
+  ...
+}
+```
+
+## Monitoring and Usage
+
+### Sync Statistics
+
+Track data warehouse usage:
+
+```python
+GET /api/projects/{project_id}/warehouse/total_rows_stats/
+
+{
+  "billing_period_start": "2024-01-01T00:00:00Z",
+  "billing_period_end": "2024-02-01T00:00:00Z",
+  "total_rows": 1500000,
+  "materialized_rows_in_billing_period": 500000,
+  "breakdown_of_rows_by_source": {
+    "abc-123": 1000000,
+    "def-456": 500000
+  }
+}
+```
+
+### Job Status
+
+Monitor sync jobs:
+
+```python
+GET /api/projects/{project_id}/warehouse/running_activity/
+
+{
+  "results": [
+    {
+      "id": "job-123",
+      "type": "Postgres",
+      "name": "users",
+      "status": "Running",
+      "rows": 45000,
+      "created_at": "2024-01-15T10:30:00Z"
+    }
+  ]
+}
+```
+
+### Data Health Issues
+
+Get failed syncs and materializations:
+
+```python
+GET /api/projects/{project_id}/warehouse/data_health_issues/
+
+{
+  "results": [
+    {
+      "id": "schema-789",
+      "name": "orders",
+      "type": "external_data_sync",
+      "status": "failed",
+      "error": "Connection timeout",
+      "failed_at": "2024-01-15T11:00:00Z"
+    }
+  ],
+  "count": 1
+}
+```
+
+## SSH Tunneling
+
+Connect to databases behind firewalls using SSH tunnels:
+
+```python
+{
+  "source_type": "Postgres",
+  "host": "localhost",  # Internal address
+  "port": 5432,
+  "ssh_tunnel": {
+    "enabled": true,
+    "host": "bastion.example.com",
+    "port": 22,
+    "auth": {
+      "selection": "password",  # or "private_key"
+      "username": "tunnel_user",
+      "password": "***"
+    }
+  }
+}
+```
+
+## Revenue Analytics (Stripe)
+
+For Stripe sources, enable automatic revenue analytics:
+
+```python
+PATCH /api/projects/{project_id}/warehouse_sources/{source_id}/revenue_analytics_config/
+
+{
+  "enabled": true,
+  "include_invoiceless_charges": false
+}
+```
+
+This creates managed views for:
+- Customer lifetime value
+- Revenue by cohort
+- Churn analysis
+
+## API Reference
+
+### Create External Data Source
+
+```python
+POST /api/projects/{project_id}/warehouse_sources/
+
+{
+  "source_type": "Postgres",
+  "prefix": "analytics_",
+  "description": "Production analytics database",
+  "payload": {
+    "host": "db.example.com",
+    "port": 5432,
+    "database": "analytics",
+    "user": "readonly",
+    "password": "***",
+    "schema": "public",
+    "schemas": [
+      {
+        "name": "users",
+        "should_sync": true,
+        "sync_type": "incremental",
+        "incremental_field": "updated_at",
+        "incremental_field_type": "timestamp"
+      }
+    ]
+  }
+}
+```
+
+### Trigger Manual Sync
+
+```python
+POST /api/projects/{project_id}/warehouse_sources/{source_id}/reload/
+```
+
+### Delete Source
+
+```python
+DELETE /api/projects/{project_id}/warehouse_sources/{source_id}/
+```
+
+Soft-deletes the source, schemas, and schedules cleanup jobs.
+
+## Best Practices
+
+<Card title="Incremental Syncing" icon="clock">
+  Use incremental syncing for large tables. Ensure incremental fields are indexed
+  and monotonically increasing (timestamps, auto-increment IDs).
+</Card>
+
+<Card title="Materialized Views" icon="table">
+  Materialize complex aggregations that power dashboards. Schedule refreshes during
+  off-peak hours to minimize impact on source databases.
+</Card>
+
+<Card title="Schema Prefixes" icon="folder">
+  Use prefixes when connecting multiple instances (prod/staging) of the same source
+  to avoid naming conflicts.
+</Card>
+
+<Card title="SSH Tunnels" icon="shield">
+  For production databases, use SSH tunneling with key-based auth instead of
+  exposing databases directly to the internet.
+</Card>
+
+## Troubleshooting
+
+### Connection Timeouts
+
+If syncs fail with connection timeouts:
+
+1. Verify firewall rules allow PostHog IPs
+2. Check database connection limits
+3. Consider using SSH tunneling for stable connections
+
+### Incremental Field Issues
+
+<Note>
+  **Common mistake**: Using non-monotonic fields like `last_login` which can decrease.
+  Always use `created_at`, `updated_at`, or auto-increment IDs.
+</Note>
+
+### Billing Limits
+
+If syncs are paused due to billing limits:
+
+```python
+GET /api/projects/{project_id}/warehouse/total_rows_stats/
+
+# Check total_rows vs your plan limit
+# Increase limit in billing settings or pause non-critical syncs
+```

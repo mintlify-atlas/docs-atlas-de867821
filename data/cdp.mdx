@@ -1,0 +1,495 @@
+---
+title: Customer Data Platform
+description: Build data pipelines with AI-powered Hog functions for transformations and destinations
+---
+
+PostHog's Customer Data Platform (CDP) combines AI-powered code generation with real-time data processing. Build transformations and destinations using natural language, then deploy them to process millions of events.
+
+## Overview
+
+The CDP provides:
+
+- **AI-powered Hog generation** - Describe what you want, get working code
+- **Real-time processing** - Transform and route events as they arrive
+- **Smart filters** - AI-generated event and property filters
+- **Auto-generated inputs** - Input schemas created from your code
+- **Integrated testing** - Validate functions before deployment
+
+## AI-Powered Development
+
+Use natural language to generate Hog functions:
+
+### Transformation Assistant
+
+<Steps>
+
+<Step title="Describe your transformation">
+```text
+Create a transformation that:
+1. Normalizes email addresses to lowercase
+2. Extracts domain from email into a new property
+3. Filters out internal @company.com emails
+```
+</Step>
+
+<Step title="AI generates Hog code">
+```hog
+if (event.properties.email) {
+  // Normalize email
+  let email := lower(trim(event.properties.email))
+  event.properties.email := email
+  
+  // Extract domain
+  let parts := split(email, '@')
+  if (length(parts) == 2) {
+    event.properties.email_domain := parts[1]
+  }
+  
+  // Filter internal emails
+  if (event.properties.email_domain == 'company.com') {
+    return null
+  }
+}
+
+return event
+```
+</Step>
+
+<Step title="Review and deploy">
+The generated code is production-ready. Test with sample events, then deploy.
+</Step>
+
+</Steps>
+
+### Filter Generation
+
+Generate event filters from natural language:
+
+```text
+Prompt: "Only process pageview events from users in the US or UK"
+
+Generated filters:
+```
+
+```json
+{
+  "events": [
+    {"id": "$pageview", "type": "events", "name": "$pageview"}
+  ],
+  "properties": [
+    {
+      "key": "$geoip_country_code",
+      "type": "event",
+      "value": ["US", "GB"],
+      "operator": "in"
+    }
+  ]
+}
+```
+
+### Input Schema Generation
+
+AI analyzes your Hog code and generates input schemas:
+
+```hog
+// Your code references inputs.slack_webhook and inputs.threshold
+if (event.properties.revenue > inputs.threshold) {
+  fetch(inputs.slack_webhook, {body: {text: 'High value purchase!'}})
+}
+```
+
+Generated schema:
+
+```json
+[
+  {
+    "key": "slack_webhook",
+    "label": "Slack Webhook URL",
+    "type": "string",
+    "required": true,
+    "description": "The Slack webhook URL to send notifications to"
+  },
+  {
+    "key": "threshold",
+    "label": "Revenue Threshold",
+    "type": "number",
+    "default": 100,
+    "description": "Minimum revenue to trigger notification"
+  }
+]
+```
+
+## Common Use Cases
+
+### Enrichment Pipeline
+
+Enrich events with data from external APIs:
+
+<CodeGroup>
+
+```text Prompt
+Create a transformation that:
+1. Takes a user_id from event properties
+2. Fetches user data from our API at https://api.example.com/users/{user_id}
+3. Adds user tier and segment to event properties
+4. Only process if the API call succeeds
+```
+
+```hog Generated Code
+if (event.properties.user_id) {
+  try {
+    let response := fetch(
+      f'https://api.example.com/users/{event.properties.user_id}',
+      {
+        headers: {
+          'Authorization': f'Bearer {inputs.api_key}'
+        },
+        timeout: 5000
+      }
+    )
+    
+    if (response.status == 200) {
+      event.properties.user_tier := response.body.tier
+      event.properties.user_segment := response.body.segment
+      event.properties.enriched := true
+    } else {
+      event.properties.enrichment_failed := true
+      print(f'API returned {response.status}')
+    }
+  } catch (error) {
+    event.properties.enrichment_error := toString(error)
+  }
+}
+
+return event
+```
+
+</CodeGroup>
+
+### Revenue Alerts
+
+Send notifications for high-value events:
+
+<CodeGroup>
+
+```text Prompt  
+Create a destination that sends a Slack message when:
+- Event is 'purchase'
+- Revenue exceeds $500
+- Include user email, revenue amount, and product name
+```
+
+```hog Generated Code
+if (event.event == 'purchase' and event.properties.revenue > 500) {
+  let message := f'''🎉 High-Value Purchase Alert!
+  
+  Customer: {event.properties.email or event.distinct_id}
+  Amount: ${event.properties.revenue}
+  Product: {event.properties.product_name}
+  Time: {event.timestamp}
+  '''
+  
+  fetch(inputs.slack_webhook, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: {
+      text: message,
+      channel: inputs.slack_channel,
+      username: 'PostHog CDP',
+      icon_emoji: ':money_with_wings:'
+    }
+  })
+}
+```
+
+</CodeGroup>
+
+### Data Warehouse Sync
+
+Export events to external databases:
+
+<CodeGroup>
+
+```text Prompt
+Create a destination that:
+1. Filters for 'user_signup' events
+2. Sends user data to a webhook at {inputs.webhook_url}
+3. Includes: email, name, signup_source, created_at
+4. Formats as JSON with ISO timestamps
+```
+
+```hog Generated Code  
+if (event.event == 'user_signup') {
+  let payload := {
+    email: event.properties.email,
+    name: event.properties.name,
+    signup_source: event.properties.signup_source or 'unknown',
+    created_at: event.timestamp,
+    user_id: event.distinct_id
+  }
+  
+  let response := fetch(inputs.webhook_url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-API-Key': inputs.api_key
+    },
+    body: payload
+  })
+  
+  if (response.status >= 400) {
+    print(f'Webhook failed: {response.status} - {response.body}')
+  }
+}
+```
+
+</CodeGroup>
+
+## AI Assistant Capabilities
+
+### Code Understanding
+
+The AI understands PostHog's data model and APIs:
+
+- **Event structure** - Knows event properties, person properties, timestamps
+- **Hog syntax** - Generates valid Hog code with proper syntax
+- **Best practices** - Follows error handling, validation, and performance patterns
+- **API integration** - Understands fetch(), headers, authentication
+
+### Iterative Refinement
+
+Modify existing functions:
+
+```text
+Prompt: "Update the transformation to also extract UTM parameters from the URL"
+
+Existing code:
+if (event.properties.email) {
+  event.properties.email := lower(event.properties.email)
+}
+
+Generated update:
+if (event.properties.email) {
+  event.properties.email := lower(event.properties.email)
+}
+
+// Extract UTM parameters
+if (event.properties.$current_url) {
+  let url := parseUrl(event.properties.$current_url)
+  if (url.search) {
+    let params := parseSearchParams(url.search)
+    event.properties.utm_source := params.utm_source
+    event.properties.utm_medium := params.utm_medium
+    event.properties.utm_campaign := params.utm_campaign
+  }
+}
+```
+
+### Error Recovery
+
+AI detects and fixes compilation errors:
+
+```text
+Error: "Hog code failed to compile: Unexpected token 'let'"
+
+AI fixes:
+- Adds missing semicolons
+- Corrects variable declarations
+- Fixes syntax issues
+- Regenerates working code
+```
+
+## Tool Integration
+
+The CDP uses specialized AI tools:
+
+### CreateHogTransformationFunctionTool
+
+Generates transformation code:
+
+```python
+from products.cdp.backend.max_tools import CreateHogTransformationFunctionTool
+
+tool = CreateHogTransformationFunctionTool(
+    context={
+        "current_hog_code": existing_code,
+        "team": team,
+        "user": user
+    }
+)
+
+result, hog_code = tool._run_impl(
+    instructions="Normalize email addresses and add domain property"
+)
+```
+
+### CreateHogFunctionFiltersTool
+
+Generates event filters:
+
+```python
+from products.cdp.backend.max_tools import CreateHogFunctionFiltersTool
+
+tool = CreateHogFunctionFiltersTool(
+    context={
+        "current_filters": {},
+        "function_type": "destination",
+        "team": team
+    }
+)
+
+result, filters = tool._run_impl(
+    instructions="Only process purchase events from premium users"
+)
+```
+
+### CreateHogFunctionInputsTool
+
+Generates input schemas:
+
+```python
+from products.cdp.backend.max_tools import CreateHogFunctionInputsTool
+
+tool = CreateHogFunctionInputsTool(
+    context={
+        "hog_code": hog_code,
+        "current_inputs_schema": [],
+        "team": team
+    }
+)
+
+result, inputs_schema = tool._run_impl(
+    instructions="Generate inputs for API key and webhook URL"
+)
+```
+
+## Development Workflow
+
+<Steps>
+
+<Step title="Describe your function">
+Use natural language to describe what you want to build:
+```text
+"Send high-value purchase events to our data warehouse"
+```
+</Step>
+
+<Step title="Generate code">
+AI creates Hog code, filters, and input schemas automatically.
+</Step>
+
+<Step title="Review and test">
+Test generated code with sample events:
+```json
+{
+  "event": "purchase",
+  "properties": {
+    "revenue": 599.99,
+    "product_id": "prod_123"
+  }
+}
+```
+</Step>
+
+<Step title="Deploy">
+Enable the function to process live events.
+</Step>
+
+<Step title="Monitor">
+Track execution metrics and errors in the dashboard.
+</Step>
+
+</Steps>
+
+## Best Practices
+
+<Card title="Be Specific in Prompts" icon="message">
+  Provide clear, detailed instructions. Include edge cases and error handling
+  requirements in your prompt for better generated code.
+</Card>
+
+<Card title="Test Generated Code" icon="flask">
+  Always test AI-generated functions with sample events before deploying to
+  production. Verify edge cases and error handling.
+</Card>
+
+<Card title="Iterate on Results" icon="rotate">
+  If the first generation isn't perfect, refine your prompt or ask for specific
+  modifications. The AI learns from your feedback.
+</Card>
+
+<Card title="Review Security" icon="shield">
+  Verify that generated code handles secrets properly using the inputs system.
+  Never hardcode API keys or credentials.
+</Card>
+
+## Limitations
+
+<Note>
+  **AI limitations**:
+  - May require iteration for complex logic
+  - Can't access your specific database schema (provide context in prompts)
+  - Generated code should be reviewed for production use
+  - Works best with clear, specific instructions
+</Note>
+
+## API Reference
+
+### Generate Transformation
+
+```python
+POST /api/projects/{project_id}/ai/hog_transformation
+
+{
+  "instructions": "Normalize email addresses and filter test users",
+  "current_hog_code": "// existing code"
+}
+
+Response:
+{
+  "hog_code": "// generated code",
+  "explanation": "This transformation normalizes emails..."
+}
+```
+
+### Generate Filters
+
+```python
+POST /api/projects/{project_id}/ai/hog_filters
+
+{
+  "instructions": "Only process pageviews from the US",
+  "function_type": "transformation"
+}
+
+Response:
+{
+  "filters": {
+    "events": [...],
+    "properties": [...]
+  }
+}
+```
+
+### Generate Inputs
+
+```python
+POST /api/projects/{project_id}/ai/hog_inputs
+
+{
+  "instructions": "Create inputs for API authentication",
+  "hog_code": "// code that uses inputs.api_key"
+}
+
+Response:
+{
+  "inputs_schema": [
+    {
+      "key": "api_key",
+      "type": "string",
+      "required": true,
+      "secret": true
+    }
+  ]
+}
+```

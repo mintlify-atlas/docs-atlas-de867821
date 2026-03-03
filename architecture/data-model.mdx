@@ -1,0 +1,413 @@
+---
+title: Data Model
+description: PostHog's data structures, storage, and schema design
+---
+
+PostHog uses a dual-database architecture: **PostgreSQL** for application metadata and **ClickHouse** for high-volume analytics data.
+
+## Database Architecture
+
+<CodeGroup>
+```sql PostgreSQL
+-- Application metadata and configuration
+-- Tables:
+-- - posthog_team (teams and projects)
+-- - posthog_user (user accounts)
+-- - posthog_organization (organizations)
+-- - posthog_featureflag (feature flag definitions)
+-- - posthog_dashboard (dashboard configs)
+-- - posthog_cohort (cohort definitions)
+```
+
+```sql ClickHouse
+-- High-volume event data and analytics
+-- Tables:
+-- - sharded_events (product analytics events)
+-- - sharded_person (person records)
+-- - sharded_person_distinct_id (identity mapping)
+-- - session_recording_events (recording metadata)
+-- - log_entries (system logs)
+```
+</CodeGroup>
+
+## Core Concepts
+
+### Team-Based Isolation
+
+All data in PostHog is scoped to a `team_id`:
+
+```python
+# ✅ Always filter by team_id
+FeatureFlag.objects.filter(team_id=team_id)
+
+# ✅ In serializers, get team from context
+class FeatureFlagSerializer(serializers.ModelSerializer):
+    def create(self, validated_data):
+        team = self.context["get_team"]()
+        return FeatureFlag.objects.create(
+            team_id=team.id,
+            **validated_data
+        )
+```
+
+<Note>
+**Security critical:** Never query without filtering by `team_id`. This is enforced in code review and testing.
+</Note>
+
+### Team vs Organization
+
+- **Organization**: Billing entity, contains multiple teams
+- **Team**: Data isolation boundary (formerly called "Project")
+- **User**: Can belong to multiple organizations
+
+```
+Organization
+  ├── Team 1 (Production)
+  │   ├── Events
+  │   ├── Feature Flags
+  │   └── Dashboards
+  └── Team 2 (Staging)
+      ├── Events
+      └── Feature Flags
+```
+
+## PostgreSQL Schema
+
+### Core Models
+
+<Accordion title="Team">
+```python
+class Team(models.Model):
+    organization = models.ForeignKey("Organization", on_delete=models.CASCADE)
+    name = models.CharField(max_length=200)
+    api_token = models.CharField(max_length=200, unique=True)
+    
+    # Settings
+    timezone = models.CharField(max_length=240, default="UTC")
+    session_recording_opt_in = models.BooleanField(default=False)
+    autocapture_opt_out = models.BooleanField(default=False)
+    
+    # Metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+```
+
+**Key points:**
+- Each team has a unique API token for event ingestion
+- Teams are the primary data isolation boundary
+- Team settings control product behavior
+</Accordion>
+
+<Accordion title="User & Organization">
+```python
+class Organization(models.Model):
+    name = models.CharField(max_length=200)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+class OrganizationMembership(models.Model):
+    organization = models.ForeignKey("Organization", on_delete=models.CASCADE)
+    user = models.ForeignKey("User", on_delete=models.CASCADE)
+    level = models.IntegerField(default=1)  # Admin, Member, etc.
+```
+
+**Key points:**
+- Users belong to organizations via OrganizationMembership
+- Access control is organization-level
+- Billing is per organization
+</Accordion>
+
+### Product Models
+
+Product-specific models live in `products/<product>/backend/models.py`:
+
+<CodeGroup>
+```python Feature Flags
+# products/feature_flags/backend/models.py
+class FeatureFlag(models.Model):
+    team = models.ForeignKey("posthog.Team", on_delete=models.CASCADE)
+    key = models.CharField(max_length=400)
+    name = models.TextField(blank=True)
+    enabled = models.BooleanField(default=True)
+    filters = models.JSONField(default=dict)
+    
+    class Meta:
+        unique_together = [("team", "key")]
+```
+
+```python Dashboards
+# products/dashboards/backend/models.py
+class Dashboard(models.Model):
+    team = models.ForeignKey("posthog.Team", on_delete=models.CASCADE)
+    name = models.CharField(max_length=400)
+    description = models.TextField(blank=True)
+    pinned = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+```
+
+```python Cohorts
+# products/cohorts/backend/models.py  
+class Cohort(models.Model):
+    team = models.ForeignKey("posthog.Team", on_delete=models.CASCADE)
+    name = models.CharField(max_length=400)
+    description = models.TextField(blank=True)
+    filters = models.JSONField(default=dict)
+    is_static = models.BooleanField(default=False)
+```
+</CodeGroup>
+
+<Info>
+**Do not add domain-specific fields to the Team model.** Use a Team Extension model instead. See `posthog/models/team/README.md` for the pattern.
+</Info>
+
+## ClickHouse Schema
+
+### Events Table
+
+The core analytics table storing all events:
+
+```sql
+CREATE TABLE sharded_events (
+    uuid UUID,
+    event VARCHAR,
+    properties VARCHAR,  -- JSON string
+    timestamp DateTime64(6, 'UTC'),
+    team_id Int64,
+    distinct_id VARCHAR,
+    elements_chain VARCHAR,
+    created_at DateTime64(6, 'UTC'),
+    
+    -- Indexes
+    INDEX team_id_index team_id TYPE minmax GRANULARITY 1,
+    INDEX event_index event TYPE bloom_filter GRANULARITY 1,
+    INDEX timestamp_index timestamp TYPE minmax GRANULARITY 1
+)
+ENGINE = ReplicatedReplacingMergeTree('/clickhouse/tables/{shard}/events', '{replica}', _timestamp)
+PARTITION BY toYYYYMM(timestamp)
+ORDER BY (team_id, toDate(timestamp), event, cityHash64(distinct_id), cityHash64(uuid))
+```
+
+**Key characteristics:**
+
+- **Partitioned** by month for efficient pruning
+- **Replicated** for high availability
+- **Replacing** merge tree for deduplication
+- **Indexed** on team_id, event, and timestamp
+
+### Person & Distinct IDs
+
+PostHog maintains identity resolution across devices:
+
+```sql
+-- Person records
+CREATE TABLE sharded_person (
+    id UUID,
+    team_id Int64,
+    properties VARCHAR,  -- JSON string
+    is_identified Boolean,
+    created_at DateTime64(6, 'UTC'),
+    
+    -- ... version fields for merging
+)
+
+-- Identity mapping
+CREATE TABLE sharded_person_distinct_id (
+    distinct_id VARCHAR,
+    person_id UUID,
+    team_id Int64,
+    is_deleted Boolean,
+    version Int64,
+    
+    -- Enables fast lookups
+    PRIMARY KEY (team_id, distinct_id)
+)
+```
+
+**Identity resolution flow:**
+
+1. Event arrives with `distinct_id` (e.g., device ID)
+2. Look up `person_id` in `person_distinct_id` table
+3. Merge person properties if `$identify` event
+4. Associate all events with resolved `person_id`
+
+### Session Recordings
+
+Recording data uses a hybrid approach:
+
+```sql
+-- Metadata in ClickHouse
+CREATE TABLE session_recording_events (
+    session_id VARCHAR,
+    team_id Int64,
+    distinct_id VARCHAR,
+    timestamp DateTime64(6, 'UTC'),
+    snapshot_data VARCHAR,  -- Small snapshots inline
+    
+    -- Large recordings reference S3
+    has_full_snapshot Boolean,
+    events_summary VARCHAR  -- JSON
+)
+```
+
+- **Small snapshots**: Stored inline in ClickHouse
+- **Large recordings**: Stored in S3, referenced by `session_id`
+- **Metadata**: Always in ClickHouse for fast queries
+
+## Data Flow
+
+<Steps>
+  <Step title="Event Capture">
+    Client SDK sends event to `/e/` endpoint:
+    ```json
+    {
+      "api_key": "phc_...",
+      "event": "$pageview",
+      "properties": {
+        "$current_url": "https://example.com",
+        "$browser": "Chrome"
+      },
+      "distinct_id": "user_123"
+    }
+    ```
+  </Step>
+
+  <Step title="Ingestion & Enrichment">
+    - Validate API key → resolve `team_id`
+    - Enrich with GeoIP data
+    - Add server-side properties
+    - Queue for processing
+  </Step>
+
+  <Step title="Identity Resolution">
+    - Look up person by `distinct_id`
+    - Create person if first-time user
+    - Merge on `$identify` events
+  </Step>
+
+  <Step title="Storage">
+    - Write event to ClickHouse `sharded_events`
+    - Update person properties if changed
+    - Trigger webhooks/exports if configured
+  </Step>
+</Steps>
+
+## Querying Data
+
+### HogQL
+
+PostHog's SQL-like query language for ClickHouse:
+
+```sql
+-- HogQL query
+SELECT 
+    event,
+    count() as event_count
+FROM events
+WHERE 
+    timestamp >= now() - INTERVAL 7 DAY
+    AND team_id = {team_id}  -- Auto-injected
+GROUP BY event
+ORDER BY event_count DESC
+LIMIT 10
+```
+
+**Security features:**
+
+- Automatic `team_id` injection
+- SQL injection prevention via AST parsing
+- Query timeout limits
+- Result size limits
+
+### Query Runners
+
+Python code that executes queries:
+
+```python
+# posthog/queries/trends/trends.py
+from posthog.queries.query_runner import QueryRunner
+
+class TrendsQueryRunner(QueryRunner):
+    def calculate(self):
+        query = self.build_query()
+        results = self.run_query(query)
+        return self.format_results(results)
+```
+
+## Migrations
+
+### PostgreSQL Migrations
+
+Standard Django migrations:
+
+```bash
+# Create migration
+python manage.py makemigrations
+
+# Apply migrations
+python manage.py migrate
+```
+
+### ClickHouse Migrations
+
+Managed migrations for ClickHouse schema changes:
+
+```python
+# posthog/clickhouse/migrations/0001_initial_schema.py
+from posthog.clickhouse.client.migration_tools import run_sql_with_exceptions
+
+def run(client):
+    run_sql_with_exceptions(
+        """
+        CREATE TABLE IF NOT EXISTS new_table (
+            ...
+        ) ENGINE = ReplicatedReplacingMergeTree(...)
+        """
+    )
+```
+
+<Note>
+ClickHouse migrations require careful coordination in distributed environments. Always test on staging first.
+</Note>
+
+## Performance Considerations
+
+### PostgreSQL Optimization
+
+- Use `select_related()` and `prefetch_related()` to avoid N+1 queries
+- Add indexes on frequently queried fields
+- Use `only()` to fetch specific fields
+
+```python
+# ✅ Optimized
+feature_flags = FeatureFlag.objects.filter(team_id=team_id).select_related("team")
+
+# ❌ N+1 query problem
+for flag in FeatureFlag.objects.filter(team_id=team_id):
+    print(flag.team.name)  # Separate query for each flag
+```
+
+### ClickHouse Optimization
+
+- Filter on `team_id` and `timestamp` first (partition keys)
+- Use materialized columns for frequently accessed JSON properties
+- Limit result sizes with `LIMIT`
+- Use sampling for approximate results on large datasets
+
+```sql
+-- ✅ Efficient - filters on partition keys
+SELECT count() FROM events 
+WHERE team_id = 1 AND timestamp > now() - INTERVAL 1 DAY
+
+-- ❌ Inefficient - full table scan
+SELECT count() FROM events WHERE properties LIKE '%purchase%'
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Development Setup" icon="code" href="/development/setup">
+    Set up your local environment
+  </Card>
+  <Card title="Testing" icon="flask" href="/development/testing">
+    Learn about testing strategies
+  </Card>
+</CardGroup>

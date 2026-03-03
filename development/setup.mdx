@@ -1,0 +1,445 @@
+---
+title: Local Development Setup
+description: Get PostHog running on your local machine for development
+---
+
+This guide walks you through setting up PostHog for local development. You'll be able to run the full stack including Django, React, PostgreSQL, ClickHouse, and Redis.
+
+## Prerequisites
+
+<Steps>
+  <Step title="System Requirements">
+    - **macOS or Linux** (Windows via WSL2)
+    - **16GB RAM minimum** (32GB recommended)
+    - **20GB free disk space**
+    - **Docker Desktop** (for infrastructure services)
+  </Step>
+
+  <Step title="Required Tools">
+    Install these tools before proceeding:
+    
+    - **Git** - Version control
+    - **Docker** - For PostgreSQL, ClickHouse, Redis
+    - **Node.js 18+** - Frontend tooling
+    - **Python 3.11+** - Backend runtime
+    - **pnpm** - Package manager
+  </Step>
+</Steps>
+
+## Quick Start
+
+The fastest way to get started is using the automated setup:
+
+```bash
+# Clone the repository
+git clone https://github.com/PostHog/posthog.git
+cd posthog
+
+# Start infrastructure services (PostgreSQL, ClickHouse, Redis)
+docker compose -f docker-compose.dev.yml up -d
+
+# Install dependencies
+pnpm install
+pip install -r requirements.txt
+
+# Run database migrations
+python manage.py migrate
+python manage.py migrate_clickhouse
+
+# Start the development server
+./bin/start
+```
+
+<Info>
+The `./bin/start` script uses `mprocs` to run all services in parallel. It will automatically install `mprocs` via Homebrew if not present.
+</Info>
+
+PostHog will be available at:
+- **Frontend**: http://localhost:8000
+- **API**: http://localhost:8000/api
+- **Dagster** (data pipeline): http://localhost:3030
+
+## Detailed Setup
+
+### 1. Environment Setup
+
+#### Option A: Using Flox (Recommended)
+
+Flox provides a reproducible development environment:
+
+```bash
+# Install flox (if not already installed)
+curl -fsSL https://downloads.flox.dev/by-env/stable/install.sh | bash
+
+# Activate the environment
+cd posthog
+flox activate
+```
+
+This automatically installs:
+- Python 3.11 with required packages
+- Node.js and pnpm
+- PostgreSQL and ClickHouse clients
+- All development tools
+
+#### Option B: Manual Setup
+
+If not using Flox, install dependencies manually:
+
+<CodeGroup>
+```bash macOS
+# Install Homebrew
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Install dependencies
+brew install python@3.11 node@18 pnpm postgresql clickhouse
+
+# Install Python packages
+pip install uv
+uv pip install -r requirements.txt
+```
+
+```bash Ubuntu/Debian
+# Install system dependencies
+sudo apt update
+sudo apt install python3.11 python3.11-dev nodejs npm postgresql-client
+
+# Install pnpm
+npm install -g pnpm
+
+# Install Python packages
+pip install -r requirements.txt
+```
+</CodeGroup>
+
+### 2. Infrastructure Services
+
+Start PostgreSQL, ClickHouse, and Redis using Docker:
+
+```bash
+# Start all services
+docker compose -f docker-compose.dev.yml up -d
+
+# Check service status
+docker compose -f docker-compose.dev.yml ps
+
+# View logs
+docker compose -f docker-compose.dev.yml logs -f
+```
+
+**Services started:**
+- PostgreSQL on `localhost:5432`
+- ClickHouse on `localhost:9000` (HTTP: 8123)
+- Redis on `localhost:6379`
+- Kafka on `localhost:9092` (for event ingestion)
+- Object Storage (MinIO) on `localhost:19000`
+
+<Note>
+If ports are already in use, you can modify them in `docker-compose.dev.yml`.
+</Note>
+
+### 3. Database Setup
+
+Initialize both PostgreSQL and ClickHouse:
+
+<Steps>
+  <Step title="Create PostgreSQL database">
+    ```bash
+    # Create database (first time only)
+    python manage.py migrate
+    
+    # Create superuser
+    python manage.py createsuperuser
+    ```
+  </Step>
+
+  <Step title="Initialize ClickHouse">
+    ```bash
+    # Run ClickHouse migrations
+    python manage.py migrate_clickhouse
+    ```
+  </Step>
+
+  <Step title="Load test data (optional)">
+    ```bash
+    # Create demo team and data
+    python manage.py setup_dev
+    ```
+  </Step>
+</Steps>
+
+### 4. Environment Variables
+
+Create a `.env` file for local configuration:
+
+```bash
+# Copy example config
+cp .env.example .env
+```
+
+Key environment variables:
+
+```bash
+# .env
+DEBUG=1
+SECRET_KEY=your-secret-key-here
+
+# Database
+DATABASE_URL=postgres://posthog:posthog@localhost:5432/posthog
+
+# ClickHouse
+CLICKHOUSE_HOST=localhost
+CLICKHOUSE_DATABASE=posthog
+CLICKHOUSE_USER=default
+CLICKHOUSE_PASSWORD=
+
+# Redis
+REDIS_URL=redis://localhost:6379/
+
+# Object Storage
+OBJECT_STORAGE_ENABLED=True
+OBJECT_STORAGE_ENDPOINT=http://localhost:19000
+OBJECT_STORAGE_ACCESS_KEY_ID=object_storage_root_user
+OBJECT_STORAGE_SECRET_ACCESS_KEY=object_storage_root_password
+```
+
+### 5. Frontend Setup
+
+Install and build frontend assets:
+
+```bash
+# Install dependencies
+pnpm install
+
+# Build once
+pnpm --filter=@posthog/frontend build
+
+# Or run in watch mode
+pnpm --filter=@posthog/frontend dev
+```
+
+## Running PostHog
+
+### Using bin/start (Recommended)
+
+The `bin/start` script runs all services in parallel:
+
+```bash
+./bin/start
+```
+
+This starts:
+- Django web server (port 8000)
+- Celery workers (background tasks)
+- Celery beat (scheduled tasks)
+- Frontend dev server (hot reload)
+- Plugin server (event processing)
+- Temporal worker (workflows)
+
+**Additional options:**
+
+```bash
+# Enable distributed tracing
+./bin/start --tracing
+
+# Use custom mprocs config
+./bin/start --custom bin/mprocs-custom.yaml
+```
+
+<Info>
+Use `Ctrl+A` then `K` to navigate between services in mprocs. Press `Q` to quit all services.
+</Info>
+
+### Running Services Individually
+
+For debugging or targeted development:
+
+<CodeGroup>
+```bash Django
+# Start Django development server
+python manage.py runserver 8000
+```
+
+```bash Celery
+# Start Celery worker
+celery -A posthog worker -l INFO
+
+# Start Celery beat (scheduler)
+celery -A posthog beat -l INFO
+```
+
+```bash Frontend
+# Start frontend dev server with hot reload
+pnpm --filter=@posthog/frontend dev
+```
+
+```bash Plugin Server
+# Process events and run plugins
+pnpm --filter=@posthog/plugin-server start
+```
+</CodeGroup>
+
+## Development Workflow
+
+### Auto-Detection of Flox Environment
+
+If using Flox, commands are automatically wrapped:
+
+```bash
+# Automatically uses flox if available
+pytest
+
+# Equivalent to:
+flox activate -- bash -c "pytest"
+```
+
+<Note>
+Never use `flox activate` in interactive sessions - it hangs. The auto-detection handles this for you.
+</Note>
+
+### Code Formatting
+
+<CodeGroup>
+```bash Python
+# Format and lint Python code
+ruff check . --fix
+ruff format .
+```
+
+```bash TypeScript
+# Format TypeScript/React code
+pnpm --filter=@posthog/frontend format
+
+# Type check
+pnpm --filter=@posthog/frontend typescript:check
+```
+</CodeGroup>
+
+### Hot Reloading
+
+- **Frontend**: Changes auto-reload at http://localhost:8000
+- **Backend**: Django auto-reloads on Python file changes
+- **Styles**: Tailwind CSS rebuilds automatically
+
+## Common Tasks
+
+### Create a New Product
+
+```bash
+# Bootstrap product structure
+bin/hogli product:bootstrap your_product_name
+
+# Verify structure
+bin/hogli product:lint your_product_name
+```
+
+### Generate API Types
+
+When you change Django serializers, regenerate TypeScript types:
+
+```bash
+bin/hogli build:openapi
+```
+
+This updates:
+- `frontend/src/generated/core/api.ts`
+- `products/*/frontend/generated/api.ts`
+
+### Create Database Migrations
+
+<CodeGroup>
+```bash PostgreSQL
+# Auto-generate migration
+python manage.py makemigrations
+
+# Apply migrations
+python manage.py migrate
+```
+
+```bash ClickHouse
+# Create ClickHouse migration
+python manage.py create_clickhouse_migration <name>
+
+# Apply ClickHouse migrations
+python manage.py migrate_clickhouse
+```
+</CodeGroup>
+
+### Reset Database
+
+```bash
+# Drop and recreate PostgreSQL
+docker compose -f docker-compose.dev.yml down -v
+docker compose -f docker-compose.dev.yml up -d
+python manage.py migrate
+python manage.py migrate_clickhouse
+```
+
+## Troubleshooting
+
+<Accordion title="Port already in use">
+If you see `Address already in use` errors:
+
+```bash
+# Find process using port
+lsof -i :8000
+
+# Kill the process
+kill -9 <PID>
+
+# Or change the port in docker-compose.dev.yml
+```
+</Accordion>
+
+<Accordion title="Database connection errors">
+Ensure Docker services are running:
+
+```bash
+# Check service status
+docker compose -f docker-compose.dev.yml ps
+
+# Restart services
+docker compose -f docker-compose.dev.yml restart
+```
+</Accordion>
+
+<Accordion title="Frontend build fails">
+Clear caches and reinstall:
+
+```bash
+# Clear pnpm cache
+pnpm store prune
+
+# Remove node_modules
+rm -rf node_modules frontend/node_modules
+
+# Reinstall
+pnpm install
+```
+</Accordion>
+
+<Accordion title="Python dependencies not found">
+If using Flox:
+
+```bash
+# Rebuild environment
+flox activate -- bash -c "pip install -r requirements.txt"
+```
+
+Without Flox:
+```bash
+# Reinstall with uv
+uv pip install -r requirements.txt --force-reinstall
+```
+</Accordion>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Testing" icon="flask" href="/development/testing">
+    Learn how to run and write tests
+  </Card>
+  <Card title="Contributing" icon="code-pull-request" href="/development/contributing">
+    Contribute code to PostHog
+  </Card>
+</CardGroup>

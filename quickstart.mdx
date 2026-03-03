@@ -1,80 +1,137 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Get started with PostHog and capture your first event in under 5 minutes
 ---
 
-## Get started in three steps
+Get PostHog up and running and capture your first event in minutes.
 
-Get your documentation site running locally and make your first customization.
+## Step 1: Sign up for PostHog Cloud
 
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
+Create a free PostHog Cloud account:
 
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="PostHog Cloud US" icon="flag-usa" href="https://app.posthog.com/signup">
+    Sign up for US Cloud
+  </Card>
+  
+  <Card title="PostHog Cloud EU" icon="earth-europe" href="https://eu.posthog.com/signup">
+    Sign up for EU Cloud
+  </Card>
 </CardGroup>
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  Your first 1 million events, 5,000 recordings, 1 million flag requests, and 100,000 exceptions are free every month.
 </Note>
+
+## Step 2: Install PostHog
+
+After signing up, you'll be prompted to install PostHog. Choose your preferred method:
+
+<Tabs>
+  <Tab title="JavaScript snippet">
+    The quickest way to get started. Add this snippet to your HTML:
+
+    ```html
+    <script>
+        !function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.async=!0,p.src=s.api_host+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+".people (stub)"},o="capture identify alias people.set people.set_once set_config register register_once unregister opt_out_capturing has_opted_out_capturing opt_in_capturing reset isFeatureEnabled onFeatureFlags getFeatureFlag getFeatureFlagPayload reloadFeatureFlags group updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures getActiveMatchingSurveys getSurveys".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
+        posthog.init('<ph_project_api_key>', {api_host: 'https://app.posthog.com'})
+    </script>
+    ```
+
+    Replace `<ph_project_api_key>` with your project API key from the PostHog dashboard.
+  </Tab>
+
+  <Tab title="npm">
+    Install the JavaScript library:
+
+    ```bash
+    npm install posthog-js
+    ```
+
+    Initialize PostHog:
+
+    ```javascript
+    import posthog from 'posthog-js'
+
+    posthog.init('<ph_project_api_key>', {
+      api_host: 'https://app.posthog.com'
+    })
+    ```
+  </Tab>
+
+  <Tab title="Python">
+    Install the Python library:
+
+    ```bash
+    pip install posthog
+    ```
+
+    Initialize and capture events:
+
+    ```python
+    from posthog import Posthog
+
+    posthog = Posthog(
+      project_api_key='<ph_project_api_key>',
+      host='https://app.posthog.com'
+    )
+
+    posthog.capture(
+      distinct_id='user_distinct_id',
+      event='event_name'
+    )
+    ```
+  </Tab>
+</Tabs>
+
+## Step 3: Capture your first event
+
+Once installed, PostHog automatically captures pageviews and other events. You can also capture custom events:
+
+<CodeGroup>
+```javascript JavaScript
+posthog.capture('button_clicked', {
+  button_name: 'Sign Up',
+  location: 'Homepage'
+})
+```
+
+```python Python
+posthog.capture(
+  distinct_id='user123',
+  event='button_clicked',
+  properties={
+    'button_name': 'Sign Up',
+    'location': 'Homepage'
+  }
+)
+```
+</CodeGroup>
+
+## Step 4: View your data
+
+After capturing events, view them in PostHog:
+
+1. Go to **Activity** in your PostHog dashboard to see live events
+2. Create your first **Insight** to analyze trends
+3. Set up a **Dashboard** to monitor key metrics
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Identify users" icon="user" href="/integration/javascript#identifying-users">
+    Link events to specific users
+  </Card>
+  
+  <Card title="Create feature flags" icon="flag" href="/products/feature-flags">
+    Roll out features safely
+  </Card>
+  
+  <Card title="Set up session replay" icon="video" href="/products/session-replay">
+    Watch user sessions
+  </Card>
+  
+  <Card title="Explore insights" icon="chart-line" href="/products/product-analytics">
+    Analyze user behavior
+  </Card>
+</CardGroup>

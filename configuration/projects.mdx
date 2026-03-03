@@ -1,0 +1,388 @@
+---
+title: Project Configuration and Settings
+description: Configure PostHog projects, manage API keys, data ingestion settings, and team-specific options
+---
+
+# Project Configuration and Settings
+
+Projects (also called "teams" internally) are isolated data environments within an organization. Each project has its own API keys, event data, and configuration.
+
+## Understanding Projects
+
+Projects provide data isolation:
+- Separate event streams and analytics data
+- Unique API keys for ingestion
+- Independent feature flags and experiments
+- Isolated dashboards and insights
+
+<Info>
+  In the codebase, projects and teams are interchangeable concepts. The `Project` model wraps a `Team` model for backward compatibility (`posthog/api/project.py:73-80`).
+</Info>
+
+## Creating a Project
+
+<Steps>
+  <Step title="Navigate to Projects">
+    Click the project dropdown in the top navigation
+  </Step>
+  
+  <Step title="Create New Project">
+    Click **New project** and enter a name
+  </Step>
+  
+  <Step title="Configure Initial Settings">
+    Set timezone, week start day, and other preferences
+  </Step>
+  
+  <Step title="Get Your API Key">
+    Copy the project API token to start sending events
+  </Step>
+</Steps>
+
+<Note>
+  **Project Limits**: Organizations on paid plans can create up to 1,500 projects (`MAX_ALLOWED_PROJECTS_PER_ORG` in `posthog/api/project.py:70`). Free plans are limited to one non-demo project.
+</Note>
+
+## Project API Keys
+
+### Project API Token
+
+The primary key for ingesting events:
+
+```bash
+# Example usage
+curl -X POST https://app.posthog.com/capture/ \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "api_key": "phc_YOUR_PROJECT_TOKEN",
+    "event": "event_name",
+    "distinct_id": "user123"
+  }'
+```
+
+- Read-only field: `api_token` (auto-generated)
+- Used for event ingestion, feature flags, and session recording
+- Cannot be manually changed; use token rotation instead
+
+### Rotating API Tokens
+
+To rotate your project API token (`posthog/api/project.py:695-700`):
+
+1. Go to **Project settings → Danger zone**
+2. Click **Reset project API key**
+3. Update your application code with the new token
+4. Old token is immediately invalidated
+
+<Warning>
+  Resetting the API token breaks all existing integrations using the old key. Plan the rotation carefully.
+</Warning>
+
+### Secret API Tokens
+
+For server-side evaluation and sensitive operations:
+
+- **Primary secret token** (`secret_api_token`) - Current active secret
+- **Backup secret token** (`secret_api_token_backup`) - Previous secret during rotation
+
+Rotate secret tokens (`posthog/api/project.py:708-713`):
+
+```python
+# Rotation process:
+# 1. Current secret → backup
+# 2. New secret generated → primary
+# This allows zero-downtime rotation
+```
+
+## Project Settings
+
+### General Configuration
+
+Key settings from `posthog/api/project.py:120-184`:
+
+<Accordion title="Basic Information">
+  - **Name** - Project display name
+  - **Product description** - Optional description
+  - **Timezone** - Data display timezone (affects date grouping)
+  - **Week start day** - `0` (Sunday) or `1` (Monday), auto-detected from IP location
+</Accordion>
+
+<Accordion title="Data Collection">
+  - **Autocapture opt-out** - Disable automatic event capture
+  - **Autocapture exceptions** - Enable JavaScript error tracking
+  - **Autocapture web vitals** - Track Core Web Vitals metrics
+  - **Capture console logs** - Record browser console output
+  - **Capture performance** - Network and performance monitoring
+  - **Anonymize IPs** - Hash IP addresses before storage
+</Accordion>
+
+<Accordion title="Session Recording">
+  **Core settings:**
+  - `session_recording_opt_in` - Enable session recordings
+  - `session_recording_sample_rate` - Percentage to record (0.0-1.0)
+  - `session_recording_minimum_duration_milliseconds` - Minimum length to save
+  
+  **Advanced configuration:**
+  ```json
+  {
+    "session_recording_network_payload_capture_config": {
+      "recordHeaders": true,
+      "recordBody": false
+    },
+    "session_recording_masking_config": {
+      "maskAllInputs": true,
+      "maskInputOptions": { "password": true }
+    }
+  }
+  ```
+</Accordion>
+
+### Data Management
+
+#### Test Account Filters
+
+Exclude internal traffic from analytics:
+
+```json
+{
+  "test_account_filters": [
+    {
+      "key": "email",
+      "type": "person",
+      "value": "@company.com",
+      "operator": "icontains"
+    }
+  ],
+  "test_account_filters_default_checked": true
+}
+```
+
+Filters are applied automatically when `default_checked` is `true`.
+
+#### Path Cleaning Filters
+
+Normalize URL paths for cleaner analytics:
+
+```json
+{
+  "path_cleaning_filters": [
+    { "regex": "/user/[0-9]+/", "alias": "/user/:id/" },
+    { "regex": "\\?.*$", "alias": "" }
+  ]
+}
+```
+
+### Person Display Configuration
+
+Customize how persons appear in the interface:
+
+```json
+{
+  "person_display_name_properties": [
+    "email",
+    "username",
+    "name"
+  ]
+}
+```
+
+PostHog uses the first available property as the display name.
+
+## Data Attributes
+
+Control which attributes are captured:
+
+```json
+{
+  "data_attributes": [
+    "data-attr-*",
+    "data-ph-*"
+  ]
+}
+```
+
+Elements with these attributes are automatically tracked in autocapture.
+
+## Feature Configuration
+
+### Surveys
+
+Global survey appearance settings (`posthog/api/project.py:391-420`):
+
+```json
+{
+  "survey_config": {
+    "appearance": {
+      "backgroundColor": "#ffffff",
+      "submitButtonColor": "#1d4aff"
+    },
+    "position": "bottom-right"
+  }
+}
+```
+
+Changes are logged to activity feed when updated.
+
+### Heatmaps and Other Products
+
+- `heatmaps_opt_in` - Enable heatmap recording
+- `surveys_opt_in` - Allow survey creation
+- `inject_web_apps` - Enable web app injection
+- `conversations_enabled` - Activate conversations widget
+
+## App URLs Configuration
+
+Define authorized domains for your application:
+
+```json
+{
+  "app_urls": [
+    "https://app.example.com",
+    "https://staging.example.com"
+  ]
+}
+```
+
+Used for:
+- Toolbar authorization
+- CORS validation
+- Session recording domain matching
+
+## Recording Domains
+
+Limit which domains can send session recordings:
+
+```json
+{
+  "recording_domains": [
+    "example.com",
+    "*.example.com"
+  ]
+}
+```
+
+Wildcard patterns are supported.
+
+## Group Types
+
+Define custom group types for group analytics:
+
+```python
+# Managed via GroupTypeMapping model
+# Example: Company, Organization, Project
+group_types = [
+    {"group_type": "company", "group_type_index": 0},
+    {"group_type": "project", "group_type_index": 1}
+]
+```
+
+Access via `posthog/api/project.py:266-272`.
+
+## Project Deletion
+
+<Warning>
+  Project deletion is permanent. All events, recordings, and configurations are lost.
+</Warning>
+
+Deletion process (`posthog/api/project.py:634-688`):
+
+<Steps>
+  <Step title="Initiate Deletion">
+    Go to **Project settings → Danger zone → Delete project**
+  </Step>
+  
+  <Step title="Confirm Action">
+    Type the project name to confirm
+  </Step>
+  
+  <Step title="Background Processing">
+    Data deletion queued via `delete_project_data_and_notify_task`
+  </Step>
+  
+  <Step title="Cleanup">
+    - ClickHouse data removed
+    - PostgreSQL records deleted
+    - Batch exports cancelled
+    - Members notified via email
+  </Step>
+</Steps>
+
+## Moving Projects Between Organizations
+
+Admins can transfer projects to another organization (`posthog/api/project.py:844-923`):
+
+<Steps>
+  <Step title="Verify Permissions">
+    You must be an admin in both the source and target organizations
+  </Step>
+  
+  <Step title="Initiate Transfer">
+    API endpoint: `POST /api/projects/{id}/change_organization/`
+  </Step>
+  
+  <Step title="Update References">
+    All teams in the project are moved atomically
+  </Step>
+</Steps>
+
+<Info>
+  Activity logs record the organization change with both old and new organization details.
+</Info>
+
+## Advanced Settings
+
+### Correlation Analysis
+
+Configure feature correlation settings:
+
+```json
+{
+  "correlation_config": {
+    "excluded_event_properties": ["$lib_version"],
+    "excluded_person_properties": ["$initial_referrer"]
+  }
+}
+```
+
+### Query Modifiers
+
+Customize query behavior:
+
+```json
+{
+  "modifiers": {
+    "personsOnEventsMode": "v2_enabled",
+    "materialsColumnsMode": "enabled"
+  }
+}
+```
+
+Modifiers are merged with defaults (`posthog/api/project.py:450-454`).
+
+### Primary Dashboard
+
+Set a default dashboard for team members:
+
+```python
+primary_dashboard = 12345  # Dashboard ID
+```
+
+## Live Events Configuration
+
+Customize visible columns in the live events view:
+
+```json
+{
+  "live_events_columns": [
+    "event",
+    "person",
+    "properties",
+    "timestamp"
+  ]
+}
+```
+
+## Related Resources
+
+- [Managing Organizations](/configuration/organizations)
+- [Authentication Setup](/configuration/authentication)
+- [Self-Hosting Configuration](/configuration/self-hosting)

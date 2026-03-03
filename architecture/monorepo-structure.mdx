@@ -1,0 +1,288 @@
+---
+title: Monorepo Structure
+description: Understanding PostHog's monorepo layout and organization
+---
+
+PostHog uses a monorepo structure to organize all product code, services, and shared utilities in a single repository. This document explains the high-level directory layout.
+
+## Directory Overview
+
+```text
+posthog/               # Legacy monolith code
+  api/                 # DRF views, serializers
+  models/              # Django models
+  queries/             # HogQL query runners
+  ...
+
+ee/                    # Enterprise features (being migrated)
+
+products/              # Product-specific apps
+  <product>/
+    backend/           # Django app (models, logic, api/, presentation/)
+    frontend/          # React (scenes, components, logics)
+    manifest.tsx       # Routes, scenes, URLs
+    package.json
+
+services/              # Independent backend services
+  llm-gateway/         # LLM proxy service
+  mcp/                 # Model Context Protocol service
+
+common/                # Shared code
+  hogli/               # Developer CLI tooling
+  hogql_parser/        # HogQL parser
+
+frontend/              # Main frontend application
+  src/
+    scenes/            # Page components
+    lib/               # Shared utilities
+    types/             # TypeScript types
+```
+
+## Core Directories
+
+### `posthog/` - Legacy Monolith
+
+The original Django application containing:
+
+<Accordion title="API Layer (posthog/api/)">
+- Django REST Framework views
+- API serializers and validators
+- URL routing for legacy endpoints
+- Authentication and permissions
+</Accordion>
+
+<Accordion title="Models (posthog/models/)">
+- Core Django ORM models
+- Team, User, Organization
+- Legacy product models (being migrated to `products/`)
+</Accordion>
+
+<Accordion title="Query Layer (posthog/queries/)">
+- HogQL query runners
+- Query execution and optimization
+- AST-based query composition
+- ClickHouse query builders
+</Accordion>
+
+<Note>
+New code should be added to `products/` rather than the legacy `posthog/` directory. The monolith is being incrementally refactored into product-specific apps.
+</Note>
+
+### `products/` - Product Apps
+
+Each product is a self-contained vertical slice with its own backend and frontend. Examples:
+
+- `feature_flags/` - Feature flags and rollouts
+- `experiments/` - A/B testing and experimentation
+- `session_replay/` - Session recording and playback
+- `data_warehouse/` - External data integration
+- `error_tracking/` - Error monitoring and alerts
+
+**Benefits of the product structure:**
+
+- Clear ownership boundaries
+- Independent testing with Turborepo
+- Isolated dependencies
+- Easier to understand and maintain
+
+See the [Product Architecture](/architecture/products) page for details on the product pattern.
+
+### `services/` - Independent Services
+
+Services are standalone deployments with their own domain logic:
+
+<CodeGroup>
+```text llm-gateway
+services/llm-gateway/
+  # LLM proxy for AI features
+  # Routes requests to OpenAI, Anthropic, etc.
+  # Handles rate limiting and cost tracking
+```
+
+```text mcp
+services/mcp/
+  # Model Context Protocol service
+  # Provides context for AI assistants
+  # Exposes PostHog data via MCP
+```
+</CodeGroup>
+
+**Services are NOT:**
+- Shared infrastructure (that's `platform/`)
+- User-facing products (that's `products/`)
+- Cross-cutting utilities (that's `common/`)
+
+### `common/` - Shared Code
+
+Utilities and libraries used across products:
+
+<Steps>
+  <Step title="hogli">
+    Developer CLI for scaffolding and tooling:
+    ```bash
+    hogli product:bootstrap <name>  # Create new product
+    hogli build:openapi              # Generate TypeScript types
+    hogli dev:generate               # Generate dev config
+    ```
+  </Step>
+
+  <Step title="hogql_parser">
+    HogQL parser and AST utilities for query parsing
+  </Step>
+
+  <Step title="Other Utilities">
+    - Tailwind config
+    - Storybook setup
+    - Plugin transpiler
+  </Step>
+</Steps>
+
+### `frontend/` - Main Frontend
+
+The main React application:
+
+```text
+frontend/
+  src/
+    scenes/              # Page-level components
+    lib/                 # Shared utilities and helpers
+    types/               # TypeScript type definitions
+    toolbar/             # PostHog toolbar widget
+    layout/              # Navigation and layout
+    generated/           # Auto-generated API types
+  @posthog/lemon-ui/     # Design system components
+```
+
+<Info>
+Product-specific frontend code lives in `products/<product>/frontend/`, not in the main `frontend/` directory.
+</Info>
+
+## Aspirational Directories
+
+These directories represent the future architecture but don't fully exist yet:
+
+### `platform/` (Aspirational)
+
+Shared platform code for cross-cutting concerns:
+
+```text
+platform/
+  integrations/        # External adapters (Vercel, etc.)
+  schemas/             # Shared Pydantic schemas
+  auth/                # Token utilities
+  http/                # Shared HTTP clients
+  storage/             # S3/GCS clients
+  queue/               # Message queue helpers
+  db/                  # Shared DB utilities
+  observability/       # Logging, tracing, metrics
+```
+
+<Note>
+**Why platform must not call product code:**
+
+If platform imports product code, it becomes a hidden orchestrator that must know which products exist, route events to product logic, and accumulate product-specific conditionals. This destroys the "platform is foundational" property and creates circular dependencies.
+</Note>
+
+### `tools/` (Aspirational)
+
+Developer tooling that isn't imported by runtime code:
+
+- CLIs, linters, formatters
+- Code generators and scaffolding
+- Build scripts and utilities
+
+Currently `common/hogli/` serves this purpose.
+
+## File Organization Principles
+
+### Where to Put New Code
+
+<Steps>
+  <Step title="Product-Specific Features">
+    Add to `products/<product>/backend/` or `products/<product>/frontend/`
+  </Step>
+
+  <Step title="Shared Business Logic">
+    If it's truly cross-product, consider creating a new product or service
+  </Step>
+
+  <Step title="Infrastructure Utilities">
+    Add to `common/` (eventually migrate to `platform/`)
+  </Step>
+
+  <Step title="Developer Tools">
+    Add to `common/hogli/` or create standalone tool
+  </Step>
+</Steps>
+
+### Import Rules
+
+- Products should NOT import from each other's internals
+- Use product facades for cross-product communication
+- Platform/common code must NOT import from products
+- Services are completely independent
+
+<Info>
+Import boundaries are enforced by `tach` - the CI will fail if you violate these rules.
+</Info>
+
+## Migration Strategy
+
+PostHog is gradually migrating from the monolith to the product structure:
+
+1. **New features** → Always create in `products/`
+2. **Legacy code** → Migrate when making significant changes
+3. **Shared code** → Extract to `common/` or create facades
+4. **Enterprise features** → Migrate from `ee/` to `products/`
+
+## Working with the Monorepo
+
+### Finding Code
+
+<CodeGroup>
+```bash Search for files
+# Use glob for file patterns
+**/*.py              # All Python files
+products/*/backend/models.py  # All product models
+```
+
+```bash Search in files
+# Use grep for content
+rg "def create_feature_flag"  # Find function definitions
+rg "team_id" --type py        # Find team_id usage in Python
+```
+</CodeGroup>
+
+### Running Tests
+
+```bash
+# All tests
+pytest
+
+# Specific product tests (Turbo)
+pnpm turbo run backend:test --filter=@posthog/products-feature_flags
+
+# Frontend tests
+pnpm --filter=@posthog/frontend test
+```
+
+### Checking Boundaries
+
+```bash
+# Check import boundaries
+tach check
+
+# See dependency graph
+tach show
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Product Architecture" icon="box" href="/architecture/products">
+    Deep dive into the product pattern
+  </Card>
+  <Card title="Development Setup" icon="hammer" href="/development/setup">
+    Set up your local environment
+  </Card>
+</CardGroup>

@@ -1,0 +1,435 @@
+---
+title: Contributing to PostHog
+description: How to contribute code, report bugs, and submit pull requests
+---
+
+We welcome contributions to PostHog. This guide explains how to contribute effectively, what to expect during review, and how we work with external contributors.
+
+## Getting Started
+
+<Steps>
+  <Step title="Find or Create an Issue">
+    Before writing code, check if an issue exists:
+    
+    - Browse [existing issues](https://github.com/PostHog/posthog/issues)
+    - Create a new issue if needed
+    - Discuss the approach in the issue
+    
+    <Info>
+    We don't assign issues to individuals. If you want to work on something, just create a pull request and link the issue.
+    </Info>
+  </Step>
+
+  <Step title="Set Up Your Environment">
+    Follow the [Local Development Setup](/development/setup) guide to get PostHog running locally.
+  </Step>
+
+  <Step title="Create a Branch">
+    ```bash
+    # Create a feature branch
+    git checkout -b your-feature-name
+    
+    # Make your changes
+    # ...
+    
+    # Commit with conventional commits
+    git commit -m "feat: add new feature"
+    ```
+  </Step>
+</Steps>
+
+## Commit Message Convention
+
+PostHog uses [Conventional Commits](https://www.conventionalcommits.org/) for all commit messages and PR titles.
+
+### Format
+
+```
+<type>(<scope>): <description>
+```
+
+### Commit Types
+
+<Accordion title="feat - New features or functionality">
+```bash
+feat: add session replay export
+feat(feature-flags): implement multivariate flags
+feat(llma): add token usage tracking
+```
+
+Use for any change that touches production code and adds functionality.
+</Accordion>
+
+<Accordion title="fix - Bug fixes">
+```bash
+fix: resolve infinite loop in query runner
+fix(cohorts): handle empty cohort in query builder
+fix(replay): prevent memory leak in player
+```
+
+Use for any change that fixes a bug in production code.
+</Accordion>
+
+<Accordion title="chore - Non-production changes">
+```bash
+chore: update dependency versions
+chore(ci): optimize GitHub Actions workflow
+chore: update AGENTS.md instructions
+chore(tests): add coverage for edge cases
+```
+
+Use for:
+- Documentation updates
+- Test changes
+- Config updates
+- CI/CD changes
+- Refactoring without behavior changes
+- Agent instructions updates
+</Accordion>
+
+### Scope Convention
+
+<CodeGroup>
+```bash Product scopes
+feat(feature-flags): ...
+fix(experiments): ...
+feat(session-replay): ...
+```
+
+```bash Special scopes
+feat(llma): ...      # LLM analytics
+chore(ci): ...       # CI/CD
+chore(docs): ...     # Documentation
+```
+</CodeGroup>
+
+### Rules
+
+- Scope is optional but encouraged
+- Description must be lowercase
+- No period at the end
+- Keep first line under 72 characters
+
+<CodeGroup>
+```bash ✅ Good
+feat(insights): add retention graph export
+fix: handle null values in event properties
+chore(ci): update GitHub Actions workflow
+```
+
+```bash ❌ Bad
+Add retention graph export  # Missing type
+Feat(Insights): Add retention graph export.  # Wrong case, has period
+feat add export  # Missing colon
+```
+</CodeGroup>
+
+## Creating a Pull Request
+
+### Before Submitting
+
+Ensure your PR is ready for review:
+
+<Steps>
+  <Step title="Run Tests Locally">
+    ```bash
+    # Backend tests
+    pytest
+    
+    # Frontend tests
+    pnpm --filter=@posthog/frontend test
+    
+    # Product tests (if applicable)
+    pnpm turbo run backend:test --filter=@posthog/products-<name>
+    ```
+  </Step>
+
+  <Step title="Format Code">
+    ```bash
+    # Python
+    ruff check . --fix
+    ruff format .
+    
+    # TypeScript
+    pnpm --filter=@posthog/frontend format
+    pnpm --filter=@posthog/frontend typescript:check
+    ```
+  </Step>
+
+  <Step title="Resolve Merge Conflicts">
+    ```bash
+    # Update your branch with latest main
+    git fetch origin
+    git rebase origin/master
+    
+    # Resolve conflicts if any
+    # ...
+    
+    # Force push (since you rebased)
+    git push --force-with-lease
+    ```
+  </Step>
+</Steps>
+
+### PR Description
+
+Write a clear description:
+
+```markdown
+## Changes
+
+- Added retention graph export functionality
+- Updated API serializer to include export options
+- Added frontend UI for export button
+
+## Testing
+
+- [ ] Added unit tests for export logic
+- [ ] Tested export with large datasets
+- [ ] Verified CSV format is correct
+
+## Related Issues
+
+Closes #12345
+```
+
+### PR Checklist
+
+- ✅ Tests pass locally
+- ✅ Code is formatted (ruff/oxfmt)
+- ✅ No merge conflicts
+- ✅ Conventional commit format
+- ✅ Added tests for new functionality
+- ✅ Updated docs if needed
+- ✅ Followed existing patterns
+
+## Review Process
+
+### What to Expect
+
+<Note>
+**External PRs are triaged via CODEOWNERS.** The current week's [Support Hero](https://posthog.com/handbook/engineering/support-hero) for the owning team is usually the first point of contact.
+
+Customer support takes priority, so reviews can be delayed when support load is high. Expect acknowledgement when we have bandwidth; thorough reviews may come later.
+</Note>
+
+**Timeline expectations:**
+
+- Initial acknowledgement: Few days to 2 weeks
+- Full review: Depends on complexity and support load
+- Merge: After approval and CI passes
+
+### Before Full Review
+
+Please ensure:
+
+- Tests pass locally and merge conflicts are resolved
+- You've responded to automated review feedback (e.g., Greptile comments)
+- The change is focused and includes tests where appropriate
+- You've followed existing patterns and conventions
+
+### Review Outcomes
+
+<Accordion title="Approved and Merged">
+Your PR is approved and merged to master. Changes deploy to PostHog Cloud automatically.
+</Accordion>
+
+<Accordion title="Changes Requested">
+Reviewers may ask for:
+- Code changes or refactoring
+- Additional tests
+- Documentation updates
+- Explanation of approach
+
+Address feedback and push new commits.
+</Accordion>
+
+<Accordion title="Escalated or Deferred">
+For security-sensitive or critical paths, unclear product impact, or during high support load, another engineer may pick it up later.
+</Accordion>
+
+<Accordion title="Closed">
+We sometimes close PRs that are:
+- Out of scope for PostHog
+- Would add long-term maintenance burden
+- Stale (no activity for extended period)
+
+You're always welcome to reopen with updates.
+</Accordion>
+
+<Info>
+We sometimes reward helpful contributions with merch even if a PR doesn't merge.
+</Info>
+
+## Contribution Guidelines
+
+### Code Style
+
+<CodeGroup>
+```python Python
+# Use type hints
+def create_feature_flag(
+    team_id: int,
+    key: str,
+    enabled: bool,
+) -> FeatureFlag:
+    ...
+
+# Use descriptive names
+user_feature_flags = get_flags_for_user(user_id)
+
+# Early returns over nesting
+if not user:
+    return None
+
+if not user.is_active:
+    return None
+
+return user.feature_flags
+```
+
+```typescript TypeScript
+// Explicit return types
+function getFeatureFlags(): FeatureFlag[] {
+    // ...
+}
+
+// Use Kea for business logic, avoid React hooks
+export const featureFlagsLogic = kea<featureFlagsLogicType>({
+    // Logic here
+})
+
+// Tailwind classes instead of inline styles
+<div className="flex items-center gap-2">
+```
+</CodeGroup>
+
+### Architecture Guidelines
+
+- **New features** → Create in `products/` directory
+- **API views** → Declare request/response schemas with `@validated_request` or `@extend_schema`
+- **Team filtering** → Always filter querysets by `team_id`
+- **Team extensions** → Don't add domain fields to `Team` model, use extension pattern
+
+<Info>
+See [Architecture Overview](/architecture/overview) and [Product Architecture](/architecture/products) for detailed patterns.
+</Info>
+
+### Testing Requirements
+
+- Add tests for new functionality
+- Prefer parameterized tests over multiple assertions
+- Test team isolation for security
+- No doc comments in Python tests
+- Single top-level `describe` block in Jest tests
+
+### Security
+
+**SQL Safety:**
+
+```python
+# ✅ Parameterized queries
+cursor.execute("SELECT * FROM table WHERE id = %s", [id])
+
+# ❌ Never use f-strings with user input
+cursor.execute(f"SELECT * FROM table WHERE id = {id}")  # SQL injection!
+```
+
+**HogQL Safety:**
+
+```python
+# ✅ User provides entire expression (parser validates)
+parse_expr(self.query.expression)
+
+# ✅ User data in placeholders
+parse_expr("{x}", placeholders={"x": ast.Constant(value=user_input)})
+
+# ❌ User data interpolated into template
+parse_expr(f"field = '{self.query.value}'")  # Can escape context!
+```
+
+See `AGENTS.md` for full security guidelines.
+
+## Working with Products
+
+### Creating a New Product
+
+```bash
+# Bootstrap product structure
+bin/hogli product:bootstrap your_product_name
+
+# This creates:
+# - products/your_product_name/backend/
+# - products/your_product_name/frontend/
+# - manifest.tsx
+# - package.json
+```
+
+Then:
+
+1. Register in `posthog/settings/web.py` under `PRODUCTS_APPS`
+2. Update `tach.toml` with import boundaries
+3. Add API routes in `posthog/api/__init__.py`
+4. Verify with `bin/hogli product:lint your_product_name`
+
+See [Product Architecture](/architecture/products) for details.
+
+### Migrations
+
+<CodeGroup>
+```bash PostgreSQL
+# Create migration
+python manage.py makemigrations your_product_name
+
+# Apply locally
+python manage.py migrate
+```
+
+```bash ClickHouse
+# Create migration
+python manage.py create_clickhouse_migration migration_name
+
+# Apply locally
+python manage.py migrate_clickhouse
+```
+</CodeGroup>
+
+<Note>
+**Moving models from `posthog/` to `products/`?** Use `migrations.SeparateDatabaseAndState` to avoid dropping tables. See examples in the codebase.
+</Note>
+
+## Paid Features
+
+We prefer not to accept external contributions for paid features.
+
+<Info>
+If you don't see the feature on your local build, it's most likely paid. Ask in the issue before working on it.
+</Info>
+
+## Getting Help
+
+<CardGroup cols={2}>
+  <Card title="GitHub Issues" icon="github" href="https://github.com/PostHog/posthog/issues">
+    Report bugs or request features
+  </Card>
+  <Card title="Community" icon="users" href="https://posthog.com/community">
+    Ask questions and get help
+  </Card>
+  <Card title="Handbook" icon="book" href="https://posthog.com/handbook/engineering/how-we-review">
+    How we review PRs
+  </Card>
+  <Card title="Roadmap" icon="map" href="https://posthog.com/roadmap">
+    See what we're building
+  </Card>
+</CardGroup>
+
+## Additional Resources
+
+- [Monorepo Structure](/architecture/monorepo-structure) - Understanding the codebase layout
+- [Development Setup](/development/setup) - Local environment setup
+- [Testing Guide](/development/testing) - How to write and run tests
+- [Developing Locally](https://posthog.com/handbook/engineering/developing-locally) - Full handbook guide
+
+## Thank You
+
+We appreciate every contribution, whether it's code, bug reports, feature requests, or documentation improvements. Thank you for helping make PostHog better!

@@ -1,0 +1,195 @@
+---
+title: Capture Events
+description: Send events to PostHog for analytics and tracking
+---
+
+The Capture endpoint allows you to send events to PostHog for analytics, tracking user behavior, and powering features like session replay and feature flags.
+
+## Endpoint
+
+```
+POST /capture
+```
+
+## Authentication
+
+Authenticate using your project API key (also called `api_key` or `token`).
+
+## Request Body
+
+The capture endpoint accepts a single event payload with the following structure:
+
+<ParamField path="api_key" type="string" required>
+  Your PostHog project API key. This identifies which project the event belongs to.
+</ParamField>
+
+<ParamField path="event" type="string" required>
+  The name of the event being tracked. Use descriptive names like `user_signed_up`, `button_clicked`, or PostHog's special events like `$pageview`.
+</ParamField>
+
+<ParamField path="distinct_id" type="string" required>
+  A unique identifier for the user or entity performing the event. This is used to associate events with users and track behavior over time.
+  
+  Can be a user ID, email, device ID, or any unique identifier. PostHog uses this to group events by user.
+</ParamField>
+
+<ParamField path="properties" type="object">
+  An object containing event properties. These are custom key-value pairs that provide context about the event.
+  
+  Common properties include:
+  - Custom properties: Any data relevant to your event
+  - `$current_url`: The current page URL
+  - `$browser`: Browser name
+  - `$device_type`: Device type (Desktop, Mobile, Tablet)
+  
+  <Note>
+    Property values can be strings, numbers, booleans, or nested objects.
+  </Note>
+</ParamField>
+
+<ParamField path="timestamp" type="string">
+  ISO 8601 formatted timestamp for when the event occurred. If not provided, PostHog uses the current server time.
+  
+  Example: `2024-03-15T14:30:00.000Z`
+</ParamField>
+
+<ParamField path="sent_at" type="string">
+  ISO 8601 formatted timestamp for when the event was sent by the client. Used to calculate clock skew between client and server.
+</ParamField>
+
+<ParamField path="$process_person_profile" type="boolean" default="true">
+  Whether to process the person profile for this event. Set to `false` to skip person profile updates and improve ingestion performance for high-volume events.
+</ParamField>
+
+## Response
+
+The capture endpoint returns a simple acknowledgment response.
+
+<ResponseField name="status" type="number">
+  HTTP status code. `200` indicates successful capture.
+</ResponseField>
+
+## Examples
+
+<CodeGroup>
+
+```bash Basic Event
+curl -X POST https://app.posthog.com/capture \
+  -H "Content-Type: application/json" \
+  -d '{
+    "api_key": "your_project_api_key",
+    "event": "button_clicked",
+    "distinct_id": "user_123",
+    "properties": {
+      "button_name": "signup",
+      "page": "homepage"
+    }
+  }'
+```
+
+```bash Event with Timestamp
+curl -X POST https://app.posthog.com/capture \
+  -H "Content-Type: application/json" \
+  -d '{
+    "api_key": "your_project_api_key",
+    "event": "user_signed_up",
+    "distinct_id": "user_456",
+    "timestamp": "2024-03-15T14:30:00.000Z",
+    "properties": {
+      "signup_method": "email",
+      "plan": "free"
+    }
+  }'
+```
+
+```bash Pageview Event
+curl -X POST https://app.posthog.com/capture \
+  -H "Content-Type: application/json" \
+  -d '{
+    "api_key": "your_project_api_key",
+    "event": "$pageview",
+    "distinct_id": "anonymous_user_789",
+    "properties": {
+      "$current_url": "https://example.com/features",
+      "$browser": "Chrome",
+      "$device_type": "Desktop"
+    }
+  }'
+```
+
+```python Python SDK
+import posthog
+
+posthog.api_key = 'your_project_api_key'
+posthog.host = 'https://app.posthog.com'
+
+posthog.capture(
+    distinct_id='user_123',
+    event='button_clicked',
+    properties={
+        'button_name': 'signup',
+        'page': 'homepage'
+    }
+)
+```
+
+```javascript JavaScript SDK
+posthog.capture('button_clicked', {
+  button_name: 'signup',
+  page: 'homepage'
+});
+```
+
+</CodeGroup>
+
+## Special Events
+
+PostHog recognizes several special event names that trigger specific functionality:
+
+- `$pageview` - Page view tracking
+- `$autocapture` - Automatically captured user interactions
+- `$snapshot` - Session replay snapshots
+- `$performance_event` - Performance monitoring data
+- `$snapshot_items` - Session replay data items
+
+## Person Profile Processing
+
+By default, PostHog processes person profiles for each event, which:
+- Creates or updates person records
+- Associates the `distinct_id` with a person
+- Updates person properties
+
+For high-volume events where you don't need person processing (like performance monitoring), set `$process_person_profile` to `false` in the properties:
+
+```json
+{
+  "api_key": "your_project_api_key",
+  "event": "performance_metric",
+  "distinct_id": "user_123",
+  "properties": {
+    "$process_person_profile": false,
+    "metric_name": "page_load_time",
+    "value": 1250
+  }
+}
+```
+
+## Rate Limiting
+
+The capture endpoint has rate limits to prevent abuse. If you hit rate limits:
+- Implement exponential backoff
+- Batch events when possible using your SDK
+- Consider upgrading your plan for higher limits
+
+<Note>
+  Use PostHog's official SDKs when possible. They handle batching, retries, and edge cases automatically.
+</Note>
+
+## Best Practices
+
+1. **Use descriptive event names**: `user_completed_checkout` is better than `event_5`
+2. **Keep properties flat when possible**: Avoid deeply nested objects
+3. **Use consistent naming**: Decide on `snake_case` or `camelCase` and stick with it
+4. **Include context**: Add properties that help you understand the event later
+5. **Avoid PII in event names**: Use properties instead for sensitive data
+6. **Use appropriate data types**: Numbers for metrics, booleans for flags, strings for categories

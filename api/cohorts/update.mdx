@@ -1,0 +1,432 @@
+---
+title: Update Cohort
+description: Update an existing cohort's name, description, or filter criteria.
+---
+
+# Update Cohort
+
+Update an existing cohort in your project. You can modify the name, description, filters, or membership for both static and dynamic cohorts.
+
+## Endpoint
+
+```http
+PATCH /api/projects/:project_id/cohorts/:id/
+```
+
+## Path Parameters
+
+<ParamField path="project_id" type="integer" required>
+  The ID of the project containing the cohort
+</ParamField>
+
+<ParamField path="id" type="integer" required>
+  The ID of the cohort to update
+</ParamField>
+
+## Request Body
+
+All fields are optional. Only include fields you want to update.
+
+<ParamField body="name" type="string">
+  New name for the cohort
+</ParamField>
+
+<ParamField body="description" type="string">
+  New description for the cohort
+</ParamField>
+
+<ParamField body="filters" type="object">
+  Updated filter criteria for dynamic cohorts. Must contain a `properties` key.
+  
+  **Note:** Updating filters triggers recalculation of the cohort.
+</ParamField>
+
+<ParamField body="query" type="object">
+  Updated HogQL query for static cohorts created from queries
+</ParamField>
+
+<ParamField body="deleted" type="boolean">
+  Set to `true` to soft-delete the cohort, or `false` to restore a deleted cohort
+  
+  **Note:** Cohorts used in active feature flags, insights, or other cohorts cannot be deleted.
+</ParamField>
+
+<ParamField body="csv" type="file">
+  CSV file to update membership of static cohorts. This replaces existing members.
+</ParamField>
+
+## Response Fields
+
+<ResponseField name="id" type="integer">
+  Unique identifier for the cohort
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Name of the cohort
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  Description of the cohort
+</ResponseField>
+
+<ResponseField name="filters" type="object">
+  Filter criteria defining cohort membership
+</ResponseField>
+
+<ResponseField name="is_static" type="boolean">
+  Whether this cohort is static or dynamic
+</ResponseField>
+
+<ResponseField name="count" type="integer">
+  Number of users currently in the cohort
+</ResponseField>
+
+<ResponseField name="is_calculating" type="boolean">
+  Whether the cohort is being recalculated
+</ResponseField>
+
+<ResponseField name="last_calculation" type="string">
+  ISO 8601 timestamp of last calculation
+</ResponseField>
+
+<ResponseField name="version" type="integer">
+  Version number of the cohort (increments on each update)
+</ResponseField>
+
+## Examples
+
+### Update Cohort Name
+
+Change the name and description of a cohort:
+
+<CodeGroup>
+```bash cURL
+curl -X PATCH https://app.posthog.com/api/projects/12345/cohorts/789/ \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Super Active Users",
+    "description": "Users with high engagement levels"
+  }'
+```
+
+```python Python
+import posthog
+
+posthog.project_api_key = 'YOUR_API_KEY'
+
+cohort = posthog.patch('/api/projects/12345/cohorts/789/', data={
+    'name': 'Super Active Users',
+    'description': 'Users with high engagement levels'
+})
+
+print(f"Updated cohort: {cohort['name']}")
+```
+
+```javascript JavaScript
+const response = await fetch('https://app.posthog.com/api/projects/12345/cohorts/789/', {
+  method: 'PATCH',
+  headers: {
+    'Authorization': 'Bearer YOUR_API_KEY',
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    name: 'Super Active Users',
+    description: 'Users with high engagement levels'
+  })
+});
+
+const cohort = await response.json();
+console.log(`Updated cohort: ${cohort.name}`);
+```
+</CodeGroup>
+
+### Update Cohort Filters
+
+Modify the filter criteria for a dynamic cohort:
+
+<CodeGroup>
+```bash cURL
+curl -X PATCH https://app.posthog.com/api/projects/12345/cohorts/789/ \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "filters": {
+      "properties": {
+        "type": "AND",
+        "values": [
+          {
+            "type": "person",
+            "key": "plan",
+            "operator": "exact",
+            "value": ["enterprise"]
+          },
+          {
+            "type": "behavioral",
+            "key": "login",
+            "value": "performed_event",
+            "event_type": "events",
+            "time_value": 7,
+            "time_interval": "day",
+            "operator": "gte",
+            "operator_value": 5
+          }
+        ]
+      }
+    }
+  }'
+```
+
+```python Python
+import posthog
+
+posthog.project_api_key = 'YOUR_API_KEY'
+
+cohort = posthog.patch('/api/projects/12345/cohorts/789/', data={
+    'filters': {
+        'properties': {
+            'type': 'AND',
+            'values': [
+                {
+                    'type': 'person',
+                    'key': 'plan',
+                    'operator': 'exact',
+                    'value': ['enterprise']
+                },
+                {
+                    'type': 'behavioral',
+                    'key': 'login',
+                    'value': 'performed_event',
+                    'event_type': 'events',
+                    'time_value': 7,
+                    'time_interval': 'day',
+                    'operator': 'gte',
+                    'operator_value': 5
+                }
+            ]
+        }
+    }
+})
+
+print(f"Cohort is recalculating: {cohort['is_calculating']}")
+```
+
+```javascript JavaScript
+const response = await fetch('https://app.posthog.com/api/projects/12345/cohorts/789/', {
+  method: 'PATCH',
+  headers: {
+    'Authorization': 'Bearer YOUR_API_KEY',
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    filters: {
+      properties: {
+        type: 'AND',
+        values: [
+          {
+            type: 'person',
+            key: 'plan',
+            operator: 'exact',
+            value: ['enterprise']
+          },
+          {
+            type: 'behavioral',
+            key: 'login',
+            value: 'performed_event',
+            event_type: 'events',
+            time_value: 7,
+            time_interval: 'day',
+            operator: 'gte',
+            operator_value: 5
+          }
+        ]
+      }
+    }
+  })
+});
+
+const cohort = await response.json();
+console.log(`Cohort is recalculating: ${cohort.is_calculating}`);
+```
+</CodeGroup>
+
+### Update Static Cohort via CSV
+
+Replace the members of a static cohort:
+
+<CodeGroup>
+```bash cURL
+curl -X PATCH https://app.posthog.com/api/projects/12345/cohorts/789/ \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -F "csv=@updated_members.csv"
+```
+
+```python Python
+import posthog
+import requests
+
+files = {'csv': open('updated_members.csv', 'rb')}
+
+response = requests.patch(
+    'https://app.posthog.com/api/projects/12345/cohorts/789/',
+    headers={'Authorization': 'Bearer YOUR_API_KEY'},
+    files=files
+)
+
+cohort = response.json()
+print(f"Cohort updated, new count: {cohort['count']}")
+```
+
+```javascript JavaScript
+const formData = new FormData();
+formData.append('csv', fileInput.files[0]);
+
+const response = await fetch('https://app.posthog.com/api/projects/12345/cohorts/789/', {
+  method: 'PATCH',
+  headers: {
+    'Authorization': 'Bearer YOUR_API_KEY'
+  },
+  body: formData
+});
+
+const cohort = await response.json();
+console.log(`Cohort updated, new count: ${cohort.count}`);
+```
+</CodeGroup>
+
+### Delete a Cohort
+
+Soft-delete a cohort:
+
+<CodeGroup>
+```bash cURL
+curl -X PATCH https://app.posthog.com/api/projects/12345/cohorts/789/ \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"deleted": true}'
+```
+
+```python Python
+import posthog
+
+posthog.project_api_key = 'YOUR_API_KEY'
+
+cohort = posthog.patch('/api/projects/12345/cohorts/789/', data={'deleted': True})
+
+print(f"Cohort deleted: {cohort['deleted']}")
+```
+
+```javascript JavaScript
+const response = await fetch('https://app.posthog.com/api/projects/12345/cohorts/789/', {
+  method: 'PATCH',
+  headers: {
+    'Authorization': 'Bearer YOUR_API_KEY',
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({ deleted: true })
+});
+
+const cohort = await response.json();
+console.log(`Cohort deleted: ${cohort.deleted}`);
+```
+</CodeGroup>
+
+## Response
+
+```json
+{
+  "id": 789,
+  "name": "Super Active Users",
+  "description": "Users with high engagement levels",
+  "filters": {
+    "properties": {
+      "type": "AND",
+      "values": [
+        {
+          "type": "person",
+          "key": "plan",
+          "operator": "exact",
+          "value": ["enterprise"]
+        }
+      ]
+    }
+  },
+  "is_static": false,
+  "count": 245,
+  "is_calculating": true,
+  "created_by": {
+    "id": 123,
+    "uuid": "01234567-89ab-cdef-0123-456789abcdef",
+    "distinct_id": "user@example.com",
+    "first_name": "Jane",
+    "email": "jane@example.com"
+  },
+  "created_at": "2024-01-10T09:00:00Z",
+  "last_calculation": "2024-01-15T10:30:00Z",
+  "errors_calculating": 0,
+  "last_error_message": null,
+  "deleted": false,
+  "cohort_type": "realtime",
+  "version": 4,
+  "pending_version": 5
+}
+```
+
+## Error Responses
+
+<ResponseField name="400 Bad Request" type="error">
+  Invalid request body or validation error
+  
+  Examples:
+  ```json
+  {
+    "detail": "This cohort is used in 2 active feature flag(s): feature-a, feature-b. Please remove the cohort from these feature flags before deleting it."
+  }
+  ```
+  
+  ```json
+  {
+    "detail": "Behavioral filters cannot be added to cohorts used in feature flags.",
+    "code": "behavioral_cohort_found"
+  }
+  ```
+  
+  ```json
+  {
+    "detail": "Cohorts cannot reference other cohorts in a loop."
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="401 Unauthorized" type="error">
+  Invalid or missing API key
+</ResponseField>
+
+<ResponseField name="403 Forbidden" type="error">
+  Insufficient permissions to update cohorts
+</ResponseField>
+
+<ResponseField name="404 Not Found" type="error">
+  Cohort not found
+</ResponseField>
+
+## Notes
+
+- Updating filters on a dynamic cohort triggers automatic recalculation
+- You cannot delete cohorts that are:
+  - Used in active feature flags
+  - Referenced in other cohorts
+  - Used in insights
+  - Used in test account filters
+- Behavioral filters cannot be added to cohorts used in feature flags
+- Cohorts cannot form circular dependencies (cohort A referencing cohort B which references cohort A)
+- Updating a static cohort via CSV replaces all existing members
+- The `version` field increments with each update
+- Set `deleted: false` to restore a previously deleted cohort
+
+## Related Endpoints
+
+- [Create Cohort](/api/cohorts/create) - Create a new cohort
+- [List Cohorts](/api/cohorts/list) - Retrieve all cohorts
+- [Add Persons to Static Cohort](/api/cohorts/add-persons) - Add users to a static cohort
+- [Remove Person from Static Cohort](/api/cohorts/remove-person) - Remove a user from a static cohort

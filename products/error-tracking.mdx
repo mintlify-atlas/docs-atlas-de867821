@@ -1,0 +1,478 @@
+---
+title: Error tracking
+description: Capture JavaScript errors, exceptions, and stack traces automatically with session replay context and team assignment
+---
+
+Error tracking captures exceptions and errors in your application automatically. See full stack traces, session context, and user impact to debug issues faster than logs alone.
+
+## How it works
+
+Error tracking monitors your application for errors and groups them into issues:
+
+1. PostHog captures JavaScript errors and exceptions
+2. Errors are fingerprinted and grouped by root cause
+3. Each issue shows occurrences, affected users, and stack traces
+4. Link to session replays to see exactly what users did
+5. Assign issues to team members for resolution
+
+<Note>
+Error tracking is built into PostHog. Enable it in your project settings, no separate SDK needed.
+</Note>
+
+## Setting up error tracking
+
+Enable error tracking in your PostHog config:
+
+<Steps>
+  <Step title="Enable in PostHog">
+    ```javascript
+    posthog.init('<ph_project_api_key>', {
+      api_host: '<ph_instance_address>',
+      
+      // Enable error tracking
+      capture_exceptions: true,
+      
+      // Include console logs with errors
+      capture_console_errors: true
+    })
+    ```
+  </Step>
+  
+  <Step title="Configure stack trace parsing">
+    Upload source maps for readable stack traces:
+    
+    ```javascript
+    // webpack.config.js
+    module.exports = {
+      devtool: 'source-map',
+      
+      plugins: [
+        new PostHogSourceMapPlugin({
+          apiKey: '<ph_project_api_key>',
+          appVersion: process.env.APP_VERSION
+        })
+      ]
+    }
+    ```
+  </Step>
+  
+  <Step title="Test error capture">
+    Trigger a test error:
+    
+    ```javascript
+    // Throw a test error
+    posthog.capture('$exception', {
+      $exception_message: 'Test error',
+      $exception_type: 'TestError'
+    })
+    
+    // Or throw naturally
+    throw new Error('Testing error tracking')
+    ```
+  </Step>
+</Steps>
+
+## Error grouping
+
+Errors are automatically grouped into issues by fingerprint:
+
+```javascript
+// These errors group together (same root cause)
+function loadUser(userId) {
+  const user = api.getUser(userId)  // Throws if user not found
+  return user.name  // TypeError: Cannot read property 'name' of undefined
+}
+
+loadUser(123)  // Error instance 1
+loadUser(456)  // Error instance 2 - same issue
+```
+
+PostHog generates fingerprints based on:
+
+- Error type and message
+- Stack trace signature
+- File and line number
+- Function name
+
+<Note>
+Customize fingerprinting with grouping rules if PostHog groups too broadly or narrowly.
+</Note>
+
+## Issue details
+
+Each issue shows comprehensive debugging context:
+
+<Tabs>
+  <Tab title="Stack trace">
+    Full stack trace with source locations:
+    
+    ```
+    TypeError: Cannot read property 'name' of undefined
+      at loadUser (app.js:145:23)
+      at handleClick (components/UserProfile.tsx:89:12)
+      at onClick (node_modules/react-dom/index.js:4567:8)
+    ```
+    
+    Click any frame to:
+    - See surrounding code context
+    - View the full file (with source maps)
+    - Jump to GitHub/GitLab (with integration)
+  </Tab>
+  
+  <Tab title="User impact">
+    Understand how many users are affected:
+    
+    - Total error occurrences
+    - Unique affected users
+    - Error frequency over time
+    - Most common user properties
+    
+    Use this to prioritize which issues to fix first.
+  </Tab>
+  
+  <Tab title="Session context">
+    See what users did before the error:
+    
+    - Link to session replay
+    - User properties and cohorts
+    - Browser, OS, device info
+    - Previous events and actions
+    
+    Click **View recording** to watch the session that triggered the error.
+  </Tab>
+  
+  <Tab title="Breadcrumbs">
+    Event trail leading to the error:
+    
+    ```
+    1. Page loaded: /dashboard
+    2. Clicked: "View profile" button  
+    3. API call: GET /api/users/123
+    4. ERROR: Cannot read property 'name' of undefined
+    ```
+    
+    Breadcrumbs show navigation, clicks, API calls, and console logs.
+  </Tab>
+</Tabs>
+
+## Issue management
+
+Track issue status and ownership:
+
+<Steps>
+  <Step title="Issue states">
+    Mark issues with status:
+    
+    - **Active:** New or ongoing errors
+    - **Resolved:** Fixed and deployed
+    - **Archived:** Not important or won't fix
+    - **Ignored:** Suppress future occurrences
+  </Step>
+  
+  <Step title="Assignment">
+    Assign issues to team members:
+    
+    ```javascript
+    // Issues can be assigned from the UI or API
+    const issue = {
+      id: 'issue_123',
+      assignee: 'alice@company.com',
+      status: 'active'
+    }
+    ```
+    
+    Team members get notified when assigned.
+  </Step>
+  
+  <Step title="External integration">
+    Link to external issue trackers:
+    
+    - Create Jira tickets from issues
+    - Link to GitHub/GitLab issues
+    - Sync status between systems
+  </Step>
+</Steps>
+
+## Custom error tracking
+
+Track custom exceptions:
+
+```javascript
+// Track handled exceptions
+try {
+  await riskyOperation()
+} catch (error) {
+  posthog.capture('$exception', {
+    $exception_message: error.message,
+    $exception_type: error.name,
+    $exception_stack_trace_raw: error.stack,
+    // Add custom context
+    operation: 'riskyOperation',
+    userId: currentUser.id
+  })
+  
+  // Handle gracefully
+  showErrorMessage()
+}
+
+// Track custom error states
+if (apiResponse.status === 500) {
+  posthog.capture('$exception', {
+    $exception_message: 'API returned 500',
+    $exception_type: 'APIError',
+    endpoint: apiResponse.url,
+    statusCode: 500
+  })
+}
+```
+
+## Error filtering
+
+Filter out noise from error tracking:
+
+<Accordion title="Ignore known errors">
+  Configure errors to ignore:
+  
+  ```javascript
+  posthog.init('<ph_project_api_key>', {
+    capture_exceptions: true,
+    
+    // Ignore specific error messages
+    exception_capture_ignore: [
+      'ResizeObserver loop limit exceeded',
+      'Non-Error promise rejection captured'
+    ],
+    
+    // Ignore by error type
+    exception_capture_ignore_types: [
+      'AbortError',
+      'NetworkError'
+    ]
+  })
+  ```
+</Accordion>
+
+<Accordion title="Sample error rate">
+  Reduce volume for high-frequency errors:
+  
+  ```javascript
+  posthog.init('<ph_project_api_key>', {
+    capture_exceptions: true,
+    
+    // Capture only 10% of exceptions
+    exception_capture_sampling: 0.1
+  })
+  ```
+  
+  Sampling applies after grouping, so you still see all unique issues.
+</Accordion>
+
+<Accordion title="Filter by environment">
+  Track errors differently by environment:
+  
+  ```javascript
+  posthog.init('<ph_project_api_key>', {
+    capture_exceptions: process.env.NODE_ENV === 'production',
+    
+    // Add environment context
+    bootstrap: {
+      distinctID: userId,
+      properties: {
+        environment: process.env.NODE_ENV,
+        version: process.env.APP_VERSION
+      }
+    }
+  })
+  ```
+</Accordion>
+
+## Source maps
+
+Upload source maps for readable stack traces:
+
+<Tabs>
+  <Tab title="Webpack">
+    ```javascript
+    // webpack.config.js
+    const { PostHogSourceMapPlugin } = require('posthog-js/webpack')
+    
+    module.exports = {
+      devtool: 'hidden-source-map',
+      
+      plugins: [
+        new PostHogSourceMapPlugin({
+          apiKey: '<ph_project_api_key>',
+          appVersion: require('./package.json').version,
+          
+          // Optional: only upload in production
+          enabled: process.env.NODE_ENV === 'production'
+        })
+      ]
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Vite">
+    ```javascript
+    // vite.config.js
+    import { posthogSourceMapPlugin } from 'posthog-js/vite'
+    
+    export default {
+      build: {
+        sourcemap: true
+      },
+      
+      plugins: [
+        posthogSourceMapPlugin({
+          apiKey: '<ph_project_api_key>',
+          appVersion: process.env.npm_package_version
+        })
+      ]
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Manual upload">
+    ```bash
+    # Upload via CLI
+    curl -X POST https://app.posthog.com/api/projects/$PROJECT_ID/source_maps \
+      -H "Authorization: Bearer $PERSONAL_API_KEY" \
+      -F "source_map=@./dist/main.js.map" \
+      -F "minified_url=https://yourapp.com/static/main.js" \
+      -F "app_version=1.2.3"
+    ```
+  </Tab>
+</Tabs>
+
+## Common workflows
+
+<CardGroup cols={2}>
+  <Card title="Debug production errors" icon="bug">
+    1. See error in error tracking
+    2. Click to view stack trace
+    3. Open linked session replay
+    4. Watch what user did before error
+    5. Reproduce locally and fix
+  </Card>
+  
+  <Card title="Monitor error trends" icon="chart-line">
+    Create dashboard tracking:
+    - Total errors over time
+    - Errors by type
+    - Most affected users
+    - Error rate by version
+  </Card>
+  
+  <Card title="Alert on critical errors" icon="bell">
+    Set up alerts for:
+    - New error types
+    - Error spike (10x normal rate)
+    - Errors affecting >100 users
+    - Payment or auth errors
+  </Card>
+  
+  <Card title="Prioritize fixes" icon="list-ol">
+    Sort issues by:
+    - User impact (affected users × frequency)
+    - Business criticality (checkout, payment)
+    - Recent spike in occurrences
+    - Unresolved age
+  </Card>
+</CardGroup>
+
+## Error alerts
+
+Get notified when errors occur:
+
+```javascript
+// Configure alerts in PostHog UI
+const alert = {
+  name: 'Critical error spike',
+  
+  // Trigger when error count increases
+  trigger: {
+    metric: 'error_count',
+    threshold: 100,
+    window: '1h',
+    comparison: 'previous_period'
+  },
+  
+  // Filter to critical errors only
+  filters: {
+    error_type: ['TypeError', 'ReferenceError'],
+    url_contains: '/checkout'
+  },
+  
+  // Notify via Slack or email
+  notifications: ['slack', 'email']
+}
+```
+
+## Best practices
+
+<Accordion title="Add context to errors">
+  Include relevant data with exceptions:
+  
+  ```javascript
+  try {
+    await processPayment(orderId)
+  } catch (error) {
+    posthog.capture('$exception', {
+      $exception_message: error.message,
+      // Add business context
+      orderId: orderId,
+      userId: currentUser.id,
+      amount: order.total,
+      paymentMethod: order.method
+    })
+    throw error
+  }
+  ```
+</Accordion>
+
+<Accordion title="Track handled errors">
+  Don't just track uncaught exceptions. Track errors you catch and handle:
+  
+  ```javascript
+  const result = await api.fetchData()
+  if (result.error) {
+    // Track even though we handle it
+    posthog.capture('$exception', {
+      $exception_message: result.error,
+      $exception_type: 'APIError'
+    })
+    showFallbackUI()
+  }
+  ```
+</Accordion>
+
+<Accordion title="Use consistent error types">
+  Create custom error classes for better grouping:
+  
+  ```javascript
+  class PaymentError extends Error {
+    constructor(message, orderId) {
+      super(message)
+      this.name = 'PaymentError'
+      this.orderId = orderId
+    }
+  }
+  
+  throw new PaymentError('Card declined', orderId)
+  ```
+</Accordion>
+
+<Accordion title="Set up source maps in CI/CD">
+  Automatically upload source maps on deployment:
+  
+  ```yaml
+  # .github/workflows/deploy.yml
+  - name: Upload source maps
+    run: |
+      npm run build
+      posthog-source-maps upload \
+        --api-key $POSTHOG_API_KEY \
+        --app-version $GITHUB_SHA \
+        ./dist
+  ```
+</Accordion>

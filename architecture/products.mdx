@@ -1,0 +1,395 @@
+---
+title: Product Architecture
+description: How PostHog organizes code into product vertical slices
+---
+
+PostHog uses a **product-oriented architecture** where each major feature is a self-contained vertical slice with its own backend, frontend, and optional shared code.
+
+## What is a Product?
+
+A product is a user-facing feature area like Feature Flags, Experiments, or Session Replay. Each product:
+
+- Owns its **models, logic, API, and UI**
+- Is **isolated** from other products
+- Has clear **boundaries** enforced by tooling
+- Can be **tested independently** with Turborepo
+
+## Product Structure
+
+Each product follows this standardized layout:
+
+```text
+products/<product_name>/           # Turborepo package boundary
+  __init__.py                       # Allows imports like products.<product>.backend.*
+  manifest.tsx                      # Routes, scenes, URLs
+  package.json                      # Turborepo package definition
+  
+  backend/                          # Django app
+    __init__.py
+    apps.py                         # Django AppConfig
+    models.py                       # Django ORM models
+    logic.py                        # Business logic
+    
+    facade/                         # Cross-product interface
+      __init__.py
+      api.py                        # Public facade methods
+      contracts.py                  # Frozen dataclasses
+    
+    presentation/                   # HTTP layer
+      __init__.py
+      views.py                      # DRF views
+      serializers.py                # DRF serializers
+      urls.py                       # URL routing
+    
+    tasks/                          # Background jobs
+      __init__.py
+      tasks.py                      # Celery tasks
+    
+    tests/                          # Test suite
+      test_models.py
+      test_logic.py
+      test_api.py
+  
+  frontend/                         # React app
+    components/                     # Reusable components
+    scenes/                         # Page components
+    hooks/                          # React hooks
+    logics/                         # Kea state management
+    generated/                      # OpenAPI types
+```
+
+## Creating a New Product
+
+Use the `hogli` CLI to scaffold a new product:
+
+<Steps>
+  <Step title="Bootstrap the product">
+    ```bash
+    bin/hogli product:bootstrap your_product_name
+    ```
+    
+    This creates the full structure with `apps.py`, `package.json`, and all directories.
+  </Step>
+
+  <Step title="Register the Django app">
+    Add to `posthog/settings/web.py`:
+    ```python
+    PRODUCTS_APPS = [
+        # ...
+        "products.your_product_name.backend.apps.YourProductNameConfig",
+    ]
+    ```
+  </Step>
+
+  <Step title="Update tach.toml">
+    Add import boundary configuration:
+    ```toml
+    [[modules]]
+    path = "products.your_product_name"
+    depends_on = [
+        "products.your_product_name",
+        "posthog",
+        "common",
+    ]
+    interfaces = [
+        "products.your_product_name.backend.facade",
+    ]
+    ```
+  </Step>
+
+  <Step title="Verify structure">
+    ```bash
+    bin/hogli product:lint your_product_name
+    ```
+  </Step>
+</Steps>
+
+## Backend Conventions
+
+### Django App Registration
+
+Each product backend is a real Django app:
+
+```python
+# products/feature_flags/backend/apps.py
+from django.apps import AppConfig
+
+class FeatureFlagsConfig(AppConfig):
+    name = "products.feature_flags.backend"
+    label = "feature_flags"  # NOT products.feature_flags
+    verbose_name = "Feature flags"
+```
+
+<Note>
+The `label` must be the product name only, not the full path. This keeps migrations and app labels stable.
+</Note>
+
+### Import Patterns
+
+**Always use the real Python path:**
+
+```python
+# ✅ Correct
+from products.feature_flags.backend.models import FeatureFlag
+
+# ❌ Wrong - don't create re-exports
+from products.feature_flags.models import FeatureFlag
+```
+
+**Use string labels for relations:**
+
+```python
+# ✅ Correct - avoids circular imports
+class Experiment(models.Model):
+    feature_flag = models.ForeignKey(
+        "feature_flags.FeatureFlag",
+        on_delete=models.CASCADE,
+    )
+
+# ❌ Wrong - creates circular dependency
+from products.feature_flags.backend.models import FeatureFlag
+class Experiment(models.Model):
+    feature_flag = models.ForeignKey(FeatureFlag, on_delete=models.CASCADE)
+```
+
+## Isolation with Facades
+
+Products communicate through **facades** - a thin, stable public API.
+
+### Contracts (Frozen Dataclasses)
+
+Define the product's interface using frozen dataclasses:
+
+```python
+# products/visual_review/backend/facade/contracts.py
+from dataclasses import dataclass
+from datetime import datetime
+from uuid import UUID
+
+@dataclass(frozen=True)
+class Artifact:
+    id: UUID
+    project_id: int
+    content_hash: str
+    storage_path: str
+    width: int
+    height: int
+    size_bytes: int
+    created_at: datetime
+```
+
+**Rules for contracts:**
+
+- No Django imports
+- Immutable (`frozen=True`)
+- Small and hashable
+- No business logic
+
+### Facade API
+
+Expose product functionality through a facade:
+
+```python
+# products/visual_review/backend/facade/api.py
+from products.visual_review.backend.facade.contracts import Artifact
+from products.visual_review.backend import logic
+
+class VisualReviewAPI:
+    @staticmethod
+    def create_artifact(params: CreateArtifact) -> Artifact:
+        """Create a new artifact."""
+        instance = logic.create_artifact(params)
+        return _to_artifact(instance)
+    
+    @staticmethod
+    def get_artifact(artifact_id: UUID, team_id: int) -> Artifact | None:
+        """Retrieve an artifact by ID."""
+        instance = logic.get_artifact(artifact_id, team_id)
+        return _to_artifact(instance) if instance else None
+
+def _to_artifact(instance) -> Artifact:
+    """Convert ORM model to contract."""
+    return Artifact(
+        id=instance.id,
+        project_id=instance.project_id,
+        content_hash=instance.content_hash,
+        storage_path=instance.storage_path,
+        width=instance.width,
+        height=instance.height,
+        size_bytes=instance.size_bytes,
+        created_at=instance.created_at,
+    )
+```
+
+### Using Facades
+
+Other products import only the facade:
+
+```python
+# products/other_product/backend/logic.py
+from products.visual_review.backend.facade import VisualReviewAPI
+from products.visual_review.backend.facade.contracts import Artifact
+
+def process_artifact(artifact_id: UUID, team_id: int) -> None:
+    artifact: Artifact | None = VisualReviewAPI.get_artifact(artifact_id, team_id)
+    if artifact:
+        # artifact is a frozen dataclass, not an ORM object
+        print(f"Processing {artifact.storage_path}")
+```
+
+<Info>
+**Why explicit mappers?**
+
+Mapper functions (`_to_artifact`) provide an explicit boundary where internal models become external contracts. This allows:
+
+- Controlled exposure of fields
+- Field transformations and computed values
+- Protection from internal model changes
+</Info>
+
+## Business Logic Layer
+
+Business logic lives in `backend/logic.py`:
+
+```python
+# products/feature_flags/backend/logic.py
+from products.feature_flags.backend.models import FeatureFlag
+
+def create_feature_flag(team_id: int, key: str, enabled: bool) -> FeatureFlag:
+    """Create a new feature flag with validation."""
+    # Validation
+    if FeatureFlag.objects.filter(team_id=team_id, key=key).exists():
+        raise ValueError(f"Feature flag {key} already exists")
+    
+    # Business logic
+    flag = FeatureFlag.objects.create(
+        team_id=team_id,
+        key=key,
+        enabled=enabled,
+    )
+    
+    # Side effects
+    _invalidate_cache(team_id)
+    
+    return flag
+```
+
+**Business logic includes:**
+
+- Validation rules
+- Business invariants
+- Cross-field validations
+- Idempotency checks
+- Side effects
+
+## Presentation Layer
+
+The presentation layer handles HTTP concerns:
+
+```python
+# products/feature_flags/backend/presentation/views.py
+from rest_framework import viewsets
+from products.feature_flags.backend.facade import FeatureFlagsAPI
+from products.feature_flags.backend.presentation.serializers import FeatureFlagSerializer
+
+class FeatureFlagViewSet(viewsets.ModelViewSet):
+    serializer_class = FeatureFlagSerializer
+    
+    def create(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        # Call facade, not logic directly
+        result = FeatureFlagsAPI.create_flag(
+            team_id=self.team.id,
+            key=serializer.validated_data["key"],
+            enabled=serializer.validated_data["enabled"],
+        )
+        
+        return Response(
+            FeatureFlagSerializer(result).data,
+            status=status.HTTP_201_CREATED,
+        )
+```
+
+**Presentation responsibilities:**
+
+- Validate incoming JSON
+- Convert JSON → frozen dataclasses
+- Call facade methods
+- Convert frozen dataclasses → JSON
+- No business logic
+
+## Frontend Organization
+
+Product frontends use React with Kea for state management:
+
+```typescript
+// products/feature_flags/frontend/scenes/FeatureFlagsScene.tsx
+import { useActions, useValues } from 'kea'
+import { featureFlagsLogic } from '../logics/featureFlagsLogic'
+
+export function FeatureFlagsScene(): JSX.Element {
+    const { flags, loading } = useValues(featureFlagsLogic)
+    const { loadFlags, createFlag } = useActions(featureFlagsLogic)
+    
+    return (
+        <div>
+            {/* UI components */}
+        </div>
+    )
+}
+```
+
+## Selective Testing
+
+Products use Turborepo for selective test execution:
+
+```bash
+# Run all product tests
+pnpm turbo run backend:test
+
+# Run specific product tests
+pnpm turbo run backend:test --filter=@posthog/products-feature_flags
+
+# Dry-run to see what would execute
+pnpm turbo run backend:test --dry-run=json
+```
+
+**How it works:**
+
+- Turbo tracks dependencies via `package.json`
+- Only runs tests for changed products
+- Contracts (frozen dataclasses) define stability
+- When contracts don't change, downstream tests are skipped
+
+<Info>
+See the [Products Architecture](https://github.com/PostHog/posthog/blob/master/products/architecture.md) document for the full technical rationale behind DTOs, facades, and isolated testing.
+</Info>
+
+## Isolation Rules
+
+### Forbidden
+
+- ❌ Importing another product's `models.py`
+- ❌ Importing another product's `logic.py`
+- ❌ Importing views/serializers from another product
+- ❌ Returning ORM objects from facades
+
+### Allowed
+
+- ✅ Importing another product's `backend.facade`
+- ✅ Using frozen dataclasses from contracts
+- ✅ Calling business logic within the same product
+- ✅ Presentation calling its own facade
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Data Model" icon="database" href="/architecture/data-model">
+    Explore PostHog's data structures
+  </Card>
+  <Card title="Contributing" icon="code-pull-request" href="/development/contributing">
+    Learn how to contribute code
+  </Card>
+</CardGroup>
