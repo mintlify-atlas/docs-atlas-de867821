@@ -1,0 +1,159 @@
+{
+  "projectType": "saas",
+  "projectName": "PostHog",
+  "projectDescription": "All-in-one platform for product analytics, session replay, feature flags, experiments, surveys, error tracking, and data warehouse.",
+  "theme": "mint",
+  "primaryColor": "#F9BD2B",
+  "lightColor": null,
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Products",
+            "pages": [
+              "products/product-analytics",
+              "products/web-analytics",
+              "products/session-replay",
+              "products/feature-flags",
+              "products/experiments",
+              "products/surveys",
+              "products/error-tracking"
+            ]
+          },
+          {
+            "group": "Data & Infrastructure",
+            "pages": [
+              "data/data-warehouse",
+              "data/data-pipelines",
+              "data/cdp",
+              "data/llm-analytics"
+            ]
+          },
+          {
+            "group": "Integration",
+            "pages": [
+              "integration/sdks",
+              "integration/javascript",
+              "integration/python",
+              "integration/react",
+              "integration/mobile"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/organizations",
+              "configuration/projects",
+              "configuration/authentication",
+              "configuration/self-hosting"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api/overview",
+              "api/authentication",
+              "api/rate-limits"
+            ]
+          },
+          {
+            "group": "Events",
+            "pages": [
+              "api/events/capture",
+              "api/events/query",
+              "api/events/list"
+            ]
+          },
+          {
+            "group": "Feature Flags",
+            "pages": [
+              "api/feature-flags/create",
+              "api/feature-flags/evaluate",
+              "api/feature-flags/list"
+            ]
+          },
+          {
+            "group": "Cohorts",
+            "pages": [
+              "api/cohorts/create",
+              "api/cohorts/list",
+              "api/cohorts/update"
+            ]
+          },
+          {
+            "group": "Insights",
+            "pages": [
+              "api/insights/create",
+              "api/insights/query",
+              "api/insights/list"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Architecture",
+        "groups": [
+          {
+            "group": "System Design",
+            "pages": [
+              "architecture/overview",
+              "architecture/monorepo-structure",
+              "architecture/products",
+              "architecture/data-model"
+            ]
+          },
+          {
+            "group": "Development",
+            "pages": [
+              "development/setup",
+              "development/testing",
+              "development/contributing"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Product analytics with autocapture and custom events",
+    "Session replay with console logs and network monitoring",
+    "Feature flags with multivariate testing and rollout controls",
+    "A/B testing and experimentation with statistical analysis",
+    "User surveys with no-code templates",
+    "Error tracking with stack traces and source maps",
+    "Data warehouse with SQL querying and external integrations",
+    "Data pipelines (CDP) with real-time transformations",
+    "LLM analytics for tracking traces and generations",
+    "Web analytics with GA-like dashboard"
+  ],
+  "publicApiSurface": [
+    "/api/event/capture",
+    "/api/projects/:id/events",
+    "/api/projects/:id/feature_flags",
+    "/api/projects/:id/cohorts",
+    "/api/projects/:id/insights",
+    "/api/projects/:id/surveys",
+    "/api/projects/:id/experiments",
+    "/api/projects/:id/dashboards",
+    "/api/projects/:id/actions",
+    "/api/organizations",
+    "/decide",
+    "/batch"
+  ]
+}
